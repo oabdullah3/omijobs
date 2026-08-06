@@ -1,5 +1,6 @@
 import os
 import json
+import random
 import sqlite3
 import smtplib
 import time
@@ -73,11 +74,16 @@ def send_crash_email(error_traceback):
 # ==========================================
 def get_context():
     print("📂 Loading context (Resume & Instructions)...")
-    cv_path = os.path.join("context", "resume.md")
-    if os.path.exists(cv_path):
-        with open(cv_path, "r", encoding="utf-8") as f:
+    cv_path_md = os.path.join("context", "resume.md")
+    cv_path_txt = os.path.join("context", "resume.txt")
+    if os.path.exists(cv_path_txt):
+        with open(cv_path_txt, "r", encoding="utf-8") as f:
             cv_text = f.read()
-        print("  -> Loaded resume from local file.")
+        print("  -> Loaded resume from local file (resume.txt).")
+    elif os.path.exists(cv_path_md):
+        with open(cv_path_md, "r", encoding="utf-8") as f:
+            cv_text = f.read()
+        print("  -> Loaded resume from local file (resume.md).")
     else:
         cv_text = os.environ.get("RESUME_TEXT", "No resume provided.")
         print("  -> Loaded resume from environment variables.")
@@ -190,18 +196,26 @@ def get_new_job_urls(conn, queries):
     
     for q in queries:
         print(f"  🔍 Searching DuckDuckGo for: {q}")
-        try:
-            results = DDGS().text(q, max_results=MAX_RESULTS_PER_QUERY)
-            if results:
-                for res in results:
-                    url = res.get('href', '')
-                    if url:
-                        cursor.execute("SELECT 1 FROM processed_urls WHERE url=?", (url,))
-                        if not cursor.fetchone():
-                            urls.add(url)
-        except Exception as e:
-            print(f"  ❌ Search failed for '{q}': {e}")
-        time.sleep(1.2)
+        for attempt in range(3):
+            try:
+                results = DDGS().text(q, max_results=MAX_RESULTS_PER_QUERY)
+                if results:
+                    for res in results:
+                        url = res.get('href', '')
+                        if url:
+                            cursor.execute("SELECT 1 FROM processed_urls WHERE url=?", (url,))
+                            if not cursor.fetchone():
+                                urls.add(url)
+                break
+            except Exception as e:
+                wait = (attempt + 1) * 5
+                print(f"  ⚠️ Search attempt {attempt + 1}/3 failed for '{q}': {e}")
+                if attempt < 2:
+                    print(f"     Retrying in {wait}s...")
+                    time.sleep(wait)
+                else:
+                    print(f"  ❌ All retries exhausted for '{q}'")
+        time.sleep(random.uniform(1.0, 2.0))
             
     print(f"✅ Total initial URLs found: {len(urls)}")
     return list(urls)
@@ -389,6 +403,7 @@ if __name__ == "__main__":
                 continue
 
             print(f"\nProcessing: {url}")
+            time.sleep(random.uniform(1.0, 2.0))
             page_text, extracted_links = scrape_page(url)
 
             if page_text:
