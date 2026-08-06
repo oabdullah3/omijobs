@@ -2,8 +2,11 @@ import os
 import json
 import sqlite3
 import smtplib
+import time
 import traceback
 import warnings
+from datetime import datetime
+from urllib.parse import urlparse, urljoin
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -16,14 +19,13 @@ from dotenv import load_dotenv
 load_dotenv() 
 
 # ==========================================
-# CONFIGURATION 
+# CONFIGURATION (Environment Driven)
 # ==========================================
 DB_PATH = os.environ.get("DB_PATH", "seen_jobs.db")
-MAX_RESULTS_PER_QUERY = int(os.environ.get("MAX_RESULTS_PER_QUERY", 10))
-MAX_SCRAPE_LENGTH = int(os.environ.get("MAX_SCRAPE_LENGTH", 6000))
+MAX_RESULTS_PER_QUERY = int(os.environ.get("MAX_RESULTS_PER_QUERY", 8))
+MAX_SCRAPE_LENGTH = int(os.environ.get("MAX_SCRAPE_LENGTH", 8000))
 PLAYWRIGHT_TIMEOUT_MS = int(os.environ.get("PLAYWRIGHT_TIMEOUT_MS", 20000))
 
-# Generic LLM Routing
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1")
 LLM_API_KEY = os.environ.get("LLM_API_KEY")
 LLM_MODEL = os.environ.get("LLM_MODEL", "google/gemini-1.5-flash:free")
@@ -32,17 +34,17 @@ LLM_TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", 0.0))
 client = OpenAI(
     base_url=LLM_BASE_URL,
     api_key=LLM_API_KEY,
-    max_retries=2,
+    max_retries=2,    
+    timeout=30.0,     
 )
 
-# Global list to track non-fatal errors during the run
 run_errors = []
+STEALTH_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
 # ==========================================
-# ERROR MAILER (Fatal Crashes)
+# ERROR MAILER
 # ==========================================
 def send_crash_email(error_traceback):
-    """Sends an SOS email if the entire script crashes."""
     sender = os.environ.get("GMAIL_SENDER")
     password = os.environ.get("GMAIL_APP_PASSWORD")
     
@@ -67,7 +69,7 @@ def send_crash_email(error_traceback):
         print(f"❌ Failed to send crash email: {e}")
 
 # ==========================================
-# CONTEXT LOADING 
+# CONTEXT LOADING
 # ==========================================
 def get_context():
     print("📂 Loading context (Resume & Instructions)...")
@@ -92,24 +94,81 @@ def get_context():
     return cv_text, instructions
 
 # ==========================================
+# DATABASE & AGENT MEMORY
+# ==========================================
+def setup_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS processed_urls (
+            url TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    return conn
+
+def get_learning_context(conn):
+    cursor = conn.cursor()
+    cursor.execute("SELECT url, status FROM processed_urls")
+    rows = cursor.fetchall()
+    
+    if not rows:
+        return "No historical memory yet. Explore broadly."
+        
+    domain_stats = {}
+    for url, status in rows:
+        domain = urlparse(url).netloc.lower()
+        if domain.startswith("www."):
+            domain = domain[4:]
+        if domain not in domain_stats:
+            domain_stats[domain] = {"success": 0, "fail": 0}
+        if status == "RECOMMENDED":
+            domain_stats[domain]["success"] += 1
+        else:
+            domain_stats[domain]["fail"] += 1
+
+    successful_domains = sorted(
+        [d for d, s in domain_stats.items() if s["success"] > 0],
+        key=lambda x: domain_stats[x]["success"], reverse=True
+    )
+    
+    failed_domains = sorted(
+        [d for d, s in domain_stats.items() if s["success"] == 0 and s["fail"] >= 2],
+        key=lambda x: domain_stats[x]["fail"], reverse=True
+    )
+
+    context = "HISTORICAL AGENT MEMORY:\n"
+    if successful_domains:
+        context += f"- High-Yield Domains: {', '.join(successful_domains[:10])}\n"
+    if failed_domains:
+        context += f"- Low-Yield / Blocked Domains to Avoid: {', '.join(failed_domains[:15])}\n"
+        
+    return context
+
+# ==========================================
 # AI QUERY GENERATION
 # ==========================================
-def generate_search_queries(cv_text, instructions):
-    print("🧠 Asking AI to generate search queries (this may take a few seconds)...")
+def generate_search_queries(cv_text, instructions, memory_context):
+    current_year = datetime.now().year
+    
+    print("🧠 Asking AI to generate adaptive search queries...")
     prompt = f"""
-    You are an AI job-hunting agent. Based on the user's resume and explicit instructions, 
-    generate an array of AT LEAST 10 search engine queries to find relevant job openings.
+    You are an autonomous AI job-hunting agent. Generate AT LEAST 12 targeted search engine queries 
+    to find direct, active job postings in Hong Kong based on the user's profile and current date.
+    
+    CURRENT YEAR: {current_year}
+    USER RESUME: {cv_text}
+    USER INSTRUCTIONS: {instructions}
+    {memory_context}
     
     RULES:
-    1. Queries must be simple and natural (e.g., "Quantitative Risk Intern Hong Kong").
-    2. DO NOT use advanced operators (no 'site:', no 'OR', no quotes, no parentheses).
-    3. Generate at least 10 different variations to cast a wide net.
+    1. Target active opportunities for {current_year} or upcoming hiring cycles.
+    2. Leverage high-yield domain patterns from memory where applicable.
+    3. Keep queries natural and focused on target roles and locations.
     
-    RESUME: {cv_text}
-    INSTRUCTIONS: {instructions}
-    
-    Respond STRICTLY with raw JSON. Do not include markdown. Structure:
-    {{"queries": ["query 1", "query 2"]}}
+    Respond STRICTLY with raw JSON: {{"queries": ["query 1", "query 2"]}}
     """
     try:
         response = client.chat.completions.create(
@@ -119,24 +178,10 @@ def generate_search_queries(cv_text, instructions):
         )
         clean_json = response.choices[0].message.content.replace("```json", "").replace("```", "").strip()
         data = json.loads(clean_json)
-        queries = data.get("queries", ["Finance jobs Hong Kong"])
-        print(f"✅ AI successfully generated {len(queries)} queries.")
-        return queries
+        return data.get("queries", ["Finance jobs Hong Kong"])
     except Exception as e:
-        error_msg = f"Failed to generate dynamic queries: {e}"
-        print(f"❌ {error_msg}")
-        run_errors.append(error_msg)
-        return ["Finance intern Hong Kong", "Data Science intern Hong Kong", "Quantitative Risk intern Hong Kong"]
-
-# ==========================================
-# CORE PIPELINE
-# ==========================================
-def setup_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS seen_urls (url TEXT PRIMARY KEY)")
-    conn.commit()
-    return conn
+        print(f"❌ Query generation failed: {e}")
+        return ["Finance intern Hong Kong", "Quantitative Risk intern Hong Kong"]
 
 def get_new_job_urls(conn, queries):
     urls = set() 
@@ -147,55 +192,86 @@ def get_new_job_urls(conn, queries):
         print(f"  🔍 Searching DuckDuckGo for: {q}")
         try:
             results = DDGS().text(q, max_results=MAX_RESULTS_PER_QUERY)
-            if not results:
-                print(f"     -> 0 results for '{q}'.")
-                continue
-                
-            for res in results:
-                url = res.get('href')
-                if url:
-                    cursor.execute("SELECT 1 FROM seen_urls WHERE url=?", (url,))
-                    if not cursor.fetchone():
-                        urls.add(url)
+            if results:
+                for res in results:
+                    url = res.get('href', '')
+                    if url:
+                        cursor.execute("SELECT 1 FROM processed_urls WHERE url=?", (url,))
+                        if not cursor.fetchone():
+                            urls.add(url)
         except Exception as e:
-            error_msg = f"DuckDuckGo search failed for query '{q}': {e}"
-            print(f"  ❌ {error_msg}")
-            run_errors.append(error_msg)
+            print(f"  ❌ Search failed for '{q}': {e}")
+        time.sleep(1.2)
             
-    print(f"✅ Total unique new URLs found across all searches: {len(urls)}")
+    print(f"✅ Total initial URLs found: {len(urls)}")
     return list(urls)
 
-def scrape_page_text(url):
+# ==========================================
+# DYNAMIC SCRAPER (Extracts Page Text & DOM Links)
+# ==========================================
+def scrape_page(url):
+    """
+    Extracts text and DOM hyperlinks without any hardcoded filtering.
+    """
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
+            context = browser.new_context(
+                user_agent=STEALTH_USER_AGENT,
+                viewport={'width': 1920, 'height': 1080},
+                extra_http_headers={'Accept-Language': 'en-US,en;q=0.9'}
+            )
+            page = context.new_page()
             page.goto(url, timeout=PLAYWRIGHT_TIMEOUT_MS, wait_until="domcontentloaded")
-            text = page.locator("body").inner_text()
+            
+            text = page.locator("body").inner_text()[:MAX_SCRAPE_LENGTH]
+            
+            # Extract distinct hyperlinks from the page DOM for LLM inspection
+            extracted_links = []
+            links = page.locator("a").all()
+            for link in links[:50]:
+                try:
+                    anchor_text = link.inner_text().strip()
+                    href = link.get_attribute("href")
+                    if href and anchor_text:
+                        full_url = urljoin(url, href)
+                        if full_url != url:
+                            extracted_links.append({"text": anchor_text[:60], "url": full_url})
+                except Exception:
+                    continue
+                    
             browser.close()
-            return text[:MAX_SCRAPE_LENGTH] 
+            return text, extracted_links
     except Exception as e:
-        error_msg = f"Scraping failed for {url}: {e}"
-        print(f"  ⚠️ {error_msg}")
-        run_errors.append(error_msg)
-        return ""
+        print(f"  ⚠️ Scraping failed for {url}: {e}")
+        return "", []
 
-def evaluate_job(text, url, cv_text, instructions):
+# ==========================================
+# PURE LLM EVALUATION & LINK SELECTION
+# ==========================================
+def evaluate_job(text, url, links, cv_text, instructions):
     prompt = f"""
-    You are an expert recruiter. Analyze the job posting text below.
-    Determine if it is an actual job listing that matches the user's instructions and resume.
+    You are an expert recruiter evaluating a web page for an entry-level candidate.
     
     USER INSTRUCTIONS: {instructions}
     USER RESUME: {cv_text}
-    JOB TEXT: {text}
+    CURRENT PAGE URL: {url}
+    CURRENT PAGE TEXT: {text}
+    EXTRACTED HYPERLINKS ON PAGE: {json.dumps(links[:30])}
     
-    Respond STRICTLY with raw JSON. Do not include markdown. Structure:
+    TASKS:
+    1. Determine if CURRENT PAGE TEXT describes an ACTIVE, SPECIFIC, SINGLE job posting or graduate program matching the user's instructions.
+    2. REJECT if the page is expired, closed, Cloudflare blocked, a general blog, or an educational program prospectus.
+    3. If CURRENT PAGE is a search list or board, inspect the EXTRACTED HYPERLINKS array. Pick up to 3 specific sub-URLs that point to individual direct job postings matching the user's target criteria.
+    
+    Respond STRICTLY with raw JSON:
     {{
         "is_valid_job": true/false,
         "company": "Company Name",
         "title": "Job Title",
         "score": integer 0-100,
-        "reason": "1-sentence reason"
+        "reason": "1-sentence reason",
+        "child_urls_to_visit": ["sub_url_1", "sub_url_2"]
     }}
     """
     try:
@@ -207,51 +283,73 @@ def evaluate_job(text, url, cv_text, instructions):
         clean_json = response.choices[0].message.content.replace("```json", "").replace("```", "").strip()
         return json.loads(clean_json)
     except Exception as e:
-        error_msg = f"LLM parsing failed for {url}: {e}"
-        print(f"  ❌ {error_msg}")
-        run_errors.append(error_msg)
+        print(f"  ❌ LLM evaluation failed for {url}: {e}")
         return None
 
+# ==========================================
+# EMAIL DIGEST MAILER
+# ==========================================
 def send_digest_email(jobs_data):
     sender = os.environ.get("GMAIL_SENDER")
     password = os.environ.get("GMAIL_APP_PASSWORD")
     target = os.environ.get("TARGET_EMAIL")
 
-    if not jobs_data and not run_errors:
-        print("\n📭 No new jobs and no errors to email today.")
+    if not jobs_data:
+        print("\n📭 No new valid job matches to send today.")
         return
 
-    print(f"\n📧 Formatting email digest for {len(jobs_data)} valid jobs...")
+    print(f"\n📧 Sending email digest for {len(jobs_data)} direct job matches...")
     msg = MIMEMultipart()
     msg['From'] = sender
     msg['To'] = target
-    msg['Subject'] = f"Daily AI Job Digest ({len(jobs_data)} new)"
+    msg['Subject'] = f"🎯 Daily Job Digest: {len(jobs_data)} New Direct Match{'es' if len(jobs_data) > 1 else ''}"
 
-    html_content = "<h2>Top Matches Based on Your Instructions</h2>"
-    
-    if jobs_data:
-        html_content += "<ul>"
-        for job in jobs_data:
-            html_content += f"""
-            <li>
-                <strong>{job.get('company', 'Unknown')} - {job.get('title', 'Unknown Title')}</strong><br>
-                Match Score: {job.get('score', 0)}/100<br>
-                <em>Why: {job.get('reason', 'N/A')}</em><br>
-                <a href="{job['url']}">Apply / View Here</a>
-            </li><br>
-            """
-        html_content += "</ul>"
-    else:
-        html_content += "<p>No new valid jobs found today.</p>"
+    jobs_html = ""
+    for job in jobs_data:
+        score = job.get('score', 0)
+        badge_bg = "#dcfce7" if score >= 80 else "#fef9c3"
+        badge_color = "#166534" if score >= 80 else "#854d0e"
 
-    # Append any non-fatal warnings to the bottom of the digest
-    if run_errors:
-        html_content += "<hr><h3>⚠️ Warnings / Skipped Links</h3><ul>"
-        for err in run_errors:
-            html_content += f"<li><small>{err}</small></li>"
-        html_content += "</ul>"
+        jobs_html += f"""
+        <div style="background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                <div style="font-size: 18px; font-weight: 700; color: #111827;">
+                    {job.get('title', 'Unknown Title')}
+                </div>
+                <span style="background-color: {badge_bg}; color: {badge_color}; font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 12px;">
+                    {score}/100 Match
+                </span>
+            </div>
+            <div style="font-size: 14px; font-weight: 600; color: #4b5563; margin-bottom: 12px;">
+                🏢 {job.get('company', 'Unknown Company')}
+            </div>
+            <p style="font-size: 14px; color: #374151; margin: 0 0 16px 0; background-color: #f9fafb; padding: 10px; border-left: 3px solid #3b82f6;">
+                <strong>Why it matches:</strong> {job.get('reason', 'Matches criteria.')}
+            </p>
+            <a href="{job['url']}" target="_blank" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; padding: 8px 18px; border-radius: 6px;">
+                Apply Directly →
+            </a>
+        </div>
+        """
 
-    msg.attach(MIMEText(html_content, 'html'))
+    email_template = f"""
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: sans-serif; background-color: #f3f4f6; padding: 24px;">
+        <div style="max-width: 600px; margin: 0 auto;">
+            <div style="background-color: #1e293b; color: #ffffff; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
+                <h1 style="margin: 0; font-size: 20px;">🎯 Daily AI Job Digest</h1>
+                <p style="margin: 4px 0 0 0; font-size: 13px; color: #94a3b8;">Direct application links verified</p>
+            </div>
+            <div style="background-color: #f8fafc; padding: 20px; border-radius: 0 0 8px 8px; border: 1px solid #cbd5e1;">
+                {jobs_html}
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    msg.attach(MIMEText(email_template, 'html'))
 
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
@@ -261,50 +359,73 @@ def send_digest_email(jobs_data):
     except Exception as e:
         print(f"❌ Failed to send email: {e}")
 
+# ==========================================
+# MAIN EXECUTION PIPELINE
+# ==========================================
 if __name__ == "__main__":
     try:
         print("🚀 Starting AI Job Hunter...\n")
-        
         cv_text, instructions = get_context()
         
-        print("")
-        dynamic_queries = generate_search_queries(cv_text, instructions)
-        
         conn = setup_db()
-        urls = get_new_job_urls(conn, dynamic_queries)
+        memory_context = get_learning_context(conn)
+        dynamic_queries = generate_search_queries(cv_text, instructions, memory_context)
         
+        url_queue = get_new_job_urls(conn, dynamic_queries)
         valid_jobs = []
+        processed_set = set()
+
+        print("\n⚙️ Processing Found URLs...")
         
-        if urls:
-            print("\n⚙️ Processing Found URLs...")
-            
-        for url in urls:
+        while url_queue:
+            url = url_queue.pop(0)
+            if url in processed_set:
+                continue
+            processed_set.add(url)
+
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM processed_urls WHERE url=?", (url,))
+            if cursor.fetchone():
+                continue
+
             print(f"\nProcessing: {url}")
-            print("  -> Scraping page...")
-            page_text = scrape_page_text(url)
-            
+            page_text, extracted_links = scrape_page(url)
+
             if page_text:
-                print("  -> Page scraped successfully. Evaluating with AI...")
-                analysis = evaluate_job(page_text, url, cv_text, instructions)
+                analysis = evaluate_job(page_text, url, extracted_links, cv_text, instructions)
                 
-                if analysis and analysis.get("is_valid_job"):
-                    print(f"  ✅ MATCH FOUND: {analysis.get('company', 'Unknown')} - {analysis.get('title', 'Unknown')} (Score: {analysis.get('score', 0)}/100)")
+                # Check if LLM dynamically selected relevant sub-links from list page
+                child_urls = analysis.get("child_urls_to_visit", []) if analysis else []
+                if child_urls:
+                    print(f"  🔗 AI dynamically selected {len(child_urls)} sub-link(s) to queue.")
+                    for child_url in child_urls:
+                        if child_url not in processed_set:
+                            url_queue.append(child_url)
+
+                is_valid = analysis.get("is_valid_job", False) if analysis else False
+                score = analysis.get("score", 0) if analysis else 0
+                
+                if analysis and is_valid and score >= 60:
+                    print(f"  ✅ DIRECT MATCH: {analysis.get('company')} - {analysis.get('title')} (Score: {score}/100)")
                     analysis['url'] = url
                     valid_jobs.append(analysis)
-                else:
-                    print("  ❌ Not a match or invalid format. Skipping.")
-            else:
-                print("  ⚠️ No text scraped. Skipping AI evaluation.")
                     
-            conn.cursor().execute("INSERT INTO seen_urls (url) VALUES (?)", (url,))
+                    conn.cursor().execute("INSERT OR REPLACE INTO processed_urls (url, status) VALUES (?, ?)", (url, "RECOMMENDED"))
+                else:
+                    reason = analysis.get("reason", "Skipped") if analysis else "Invalid JSON"
+                    print(f"  ❌ SKIPPED: {reason}")
+                    conn.cursor().execute("INSERT OR REPLACE INTO processed_urls (url, status) VALUES (?, ?)", (url, "FAILED"))
+            else:
+                print("  ⚠️ Empty page / Scrape failed. Marking FAILED.")
+                conn.cursor().execute("INSERT OR REPLACE INTO processed_urls (url, status) VALUES (?, ?)", (url, "FAILED"))
+
             conn.commit()
-            
+
         valid_jobs = sorted(valid_jobs, key=lambda x: x.get('score', 0), reverse=True)
-        send_digest_email(valid_jobs[:15]) 
+        send_digest_email(valid_jobs)
         conn.close()
 
     except Exception as e:
-        # If the script completely dies
         error_trace = traceback.format_exc()
         print("\n💥 FATAL ERROR ENCOUNTERED:")
         print(error_trace)
