@@ -137,6 +137,12 @@ Add the following required credentials:
 * `TARGET_EMAIL`: The destination address(es) for the daily digest. Comma-separate multiple recipients, e.g. `person1@gmail.com, person2@gmail.com`.
 * `RESUME_TEXT`: *(Optional if using public repo)* Plain text version of your resume.
 * `INSTRUCTIONS_TEXT`: *(Optional if using public repo)* Search parameters and constraints.
+* `TARGET_EMAIL_TECH`: *(Optional)* Recipients for the **Tech** digest. Same comma-separated format as `TARGET_EMAIL`.
+* `RESUME_TEXT_TECH`: *(Optional)* Resume used by the **Tech** workflow.
+* `INSTRUCTIONS_TEXT_TECH`: *(Optional)* Search parameters for the **Tech** workflow.
+* `TARGET_EMAIL_FIN`: *(Optional)* Recipients for the **Finance** digest. Same comma-separated format as `TARGET_EMAIL`.
+* `RESUME_TEXT_FIN`: *(Optional)* Resume used by the **Finance** workflow.
+* `INSTRUCTIONS_TEXT_FIN`: *(Optional)* Search parameters for the **Finance** workflow.
 
 #### Environment Variables (`Repository variables`)
 
@@ -145,12 +151,21 @@ Go to the **Variables** tab under **Actions** and configure your provider parame
 * `LLM_BASE_URL`: e.g., `https://openrouter.ai/api/v1` or `https://api.deepseek.com`
 * `LLM_MODEL`: e.g., `google/gemini-1.5-flash:free` or `deepseek-chat`
 * `DB_PATH`: *(Optional)* The SQLite file to cache (e.g., `seen_jobs.db`). Each value gets its own cache lineage, so you can keep separate "seen" histories per search domain. If unset, the workflow defaults to `seen_jobs.db`.
+* `DB_PATH_TECH`: *(Optional)* Same as `DB_PATH`, but for the **Tech** workflow. Defaults to `seen_jobs_tech.db`.
+* `DB_PATH_FIN`: *(Optional)* Same as `DB_PATH`, but for the **Finance** workflow. Defaults to `seen_jobs_fin.db`.
 
 ### 3. Execution
 
-The workflow configured in `.github/workflows/daily_digest.yml` will:
+Three workflows live in `.github/workflows/`, one per search scope — each with its own DB, cache, recipients, resume, and instructions:
 
-* Execute automatically via CRON schedule at `00:00 UTC` every day.
-* Support manual execution via the **Actions** tab by selecting "Daily Dynamic Job Digest" ➡️ **Run workflow**.
-* Retain state across runs using `actions/cache` on the `DB_PATH` file to prevent duplicate postings. The cache key is derived from `DB_PATH` plus a per-run id, so each run restores the latest history and writes the updated one back.
+* **Daily Dynamic Job Digest - General** (`daily_digest.yml`) — uses the base `DB_PATH`, `TARGET_EMAIL`, `RESUME_TEXT`, `INSTRUCTIONS_TEXT`.
+* **Daily Dynamic Job Digest - Tech** (`tech_digest.yml`) — uses `DB_PATH_TECH`, `TARGET_EMAIL_TECH`, `RESUME_TEXT_TECH`, `INSTRUCTIONS_TEXT_TECH`.
+* **Daily Dynamic Job Digest - Finance** (`fin_digest.yml`) — uses `DB_PATH_FIN`, `TARGET_EMAIL_FIN`, `RESUME_TEXT_FIN`, `INSTRUCTIONS_TEXT_FIN`.
+
+Each workflow will:
+
+* Execute automatically via CRON on a daily schedule, staggered 2 hours apart: General at `00:00 UTC`, Tech at `02:00 UTC`, Finance at `04:00 UTC`.
+* Support manual execution via the **Actions** tab by selecting the workflow ➡️ **Run workflow**.
+* **Tech & Finance fail fast if unconfigured**: if any scope-specific variable (`TARGET_EMAIL_*`, `RESUME_TEXT_*`, `INSTRUCTIONS_TEXT_*`) is missing, the workflow exits with an error before scraping — emailed to `GMAIL_SENDER` via the crash-email path — so it never runs half-configured and never touches another scope's DB.
+* Retain state across runs using `actions/cache` on its `DB_PATH` file to prevent duplicate postings. The cache key is derived from `DB_PATH` plus a per-run id, so each run restores the latest history and writes the updated one back.
 * To verify the cache loaded: in the run logs, the "Cache SQLite Database" step shows `Cache restored from key: ...` on a hit (or `Cache not found` on a miss), and the scraper logs `📦 Opening database: ...` with the number of URLs already processed.

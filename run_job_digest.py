@@ -3,6 +3,7 @@ import json
 import random
 import sqlite3
 import smtplib
+import sys
 import time
 import traceback
 import warnings
@@ -23,6 +24,7 @@ load_dotenv()
 # CONFIGURATION (Environment Driven)
 # ==========================================
 DB_PATH = os.environ.get("DB_PATH", "seen_jobs.db")
+REQUIRED_VARS = os.environ.get("REQUIRED_VARS", "").strip()
 MAX_RESULTS_PER_QUERY = int(os.environ.get("MAX_RESULTS_PER_QUERY", 8))
 MAX_SCRAPE_LENGTH = int(os.environ.get("MAX_SCRAPE_LENGTH", 8000))
 PLAYWRIGHT_TIMEOUT_MS = int(os.environ.get("PLAYWRIGHT_TIMEOUT_MS", 20000))
@@ -68,6 +70,28 @@ def send_crash_email(error_traceback):
         print("📧 Crash email sent successfully.")
     except Exception as e:
         print(f"❌ Failed to send crash email: {e}")
+
+# ==========================================
+# WORKFLOW CONFIG GATING
+# ==========================================
+def validate_required_env_vars():
+    """
+    Abort early when a workflow requires env vars that aren't set.
+    The Tech/Finance workflows set REQUIRED_VARS so a half-configured run never
+    starts and never touches another scope's DB. Raises RuntimeError so main()
+    catches it and emails the crash to the sender.
+    """
+    if not REQUIRED_VARS:
+        return
+    missing = [
+        var for var in (v.strip() for v in REQUIRED_VARS.split(","))
+        if var and not os.environ.get(var)
+    ]
+    if missing:
+        raise RuntimeError(
+            "Workflow not fully configured. Missing required environment variable(s): "
+            + ", ".join(missing)
+        )
 
 # ==========================================
 # CONTEXT LOADING
@@ -388,6 +412,7 @@ def send_digest_email(jobs_data):
 if __name__ == "__main__":
     try:
         print("🚀 Starting AI Job Hunter...\n")
+        validate_required_env_vars()
         cv_text, instructions = get_context()
         
         conn = setup_db()
@@ -454,3 +479,4 @@ if __name__ == "__main__":
         print("\n💥 FATAL ERROR ENCOUNTERED:")
         print(error_trace)
         send_crash_email(error_trace)
+        sys.exit(1)
