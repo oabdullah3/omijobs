@@ -8,6 +8,8 @@ on:
 jobs:
   run-digest:
     runs-on: ubuntu-latest
+    env:
+      DB_PATH: ${{ vars.DB_PATH || 'seen_jobs.db' }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -15,10 +17,10 @@ jobs:
       - name: Cache SQLite Database
         uses: actions/cache@v4
         with:
-          path: seen_jobs.db
-          key: jobs-db-v1
+          path: ${{ env.DB_PATH }}
+          key: jobs-db-${{ env.DB_PATH }}-${{ github.run_id }}
           restore-keys: |
-            jobs-db-v1
+            jobs-db-${{ env.DB_PATH }}-
       
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -34,6 +36,7 @@ jobs:
       - name: Run Autonomous Job Scraper
         timeout-minutes: 30
         env:
+          DB_PATH: ${{ env.DB_PATH }}
           LLM_BASE_URL: ${{ vars.LLM_BASE_URL || 'https://openrouter.ai/api/v1' }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_MODEL: ${{ vars.LLM_MODEL || 'google/gemini-1.5-flash:free' }}

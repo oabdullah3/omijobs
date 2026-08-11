@@ -103,6 +103,7 @@ def get_context():
 # DATABASE & AGENT MEMORY
 # ==========================================
 def setup_db():
+    print(f"📦 Opening database: {DB_PATH}")
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""
@@ -112,6 +113,9 @@ def setup_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    c.execute("SELECT COUNT(*) FROM processed_urls")
+    processed_count = c.fetchone()[0]
+    print(f"  -> {processed_count} URLs already processed (restored from cache if a hit)")
     conn.commit()
     return conn
 
@@ -306,16 +310,21 @@ def evaluate_job(text, url, links, cv_text, instructions):
 def send_digest_email(jobs_data):
     sender = os.environ.get("GMAIL_SENDER")
     password = os.environ.get("GMAIL_APP_PASSWORD")
-    target = os.environ.get("TARGET_EMAIL")
+    target_raw = os.environ.get("TARGET_EMAIL", "")
+    recipients = [t.strip() for t in target_raw.split(",") if t.strip()]
 
     if not jobs_data:
         print("\n📭 No new valid job matches to send today.")
         return
 
-    print(f"\n📧 Sending email digest for {len(jobs_data)} direct job matches...")
+    if not recipients:
+        print("❌ No recipients configured (TARGET_EMAIL is empty).")
+        return
+
+    print(f"\n📧 Sending email digest for {len(jobs_data)} direct job matches to {len(recipients)} recipient(s)...")
     msg = MIMEMultipart()
     msg['From'] = sender
-    msg['To'] = target
+    msg['To'] = ", ".join(recipients)
     msg['Subject'] = f"🎯 Daily Job Digest: {len(jobs_data)} New Direct Match{'es' if len(jobs_data) > 1 else ''}"
 
     jobs_html = ""

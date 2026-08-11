@@ -81,8 +81,10 @@ LLM_MODEL="google/gemini-1.5-flash:free"
 # ==========================================
 GMAIL_SENDER="your_email@gmail.com"
 GMAIL_APP_PASSWORD="your_16_char_app_password"
-TARGET_EMAIL="where_to_send@gmail.com"
+TARGET_EMAIL="person1@gmail.com, person2@gmail.com"  # comma-separated list — one or many
 
+# Where the dedup history (SQLite) lives. Each value = a separate history,
+# e.g. seen_jobs_fin.db for finance searches, seen_jobs_tech.db for tech.
 DB_PATH="seen_jobs.db"
 MAX_RESULTS_PER_QUERY=10
 MAX_SCRAPE_LENGTH=6000
@@ -132,7 +134,7 @@ Add the following required credentials:
 * `LLM_API_KEY`: Your API key (from OpenRouter, DeepSeek, OpenAI, etc.).
 * `GMAIL_SENDER`: The dispatching Gmail address.
 * `GMAIL_APP_PASSWORD`: Your 16-character Google App Password.
-* `TARGET_EMAIL`: The destination address for the daily digest.
+* `TARGET_EMAIL`: The destination address(es) for the daily digest. Comma-separate multiple recipients, e.g. `person1@gmail.com, person2@gmail.com`.
 * `RESUME_TEXT`: *(Optional if using public repo)* Plain text version of your resume.
 * `INSTRUCTIONS_TEXT`: *(Optional if using public repo)* Search parameters and constraints.
 
@@ -142,6 +144,7 @@ Go to the **Variables** tab under **Actions** and configure your provider parame
 
 * `LLM_BASE_URL`: e.g., `https://openrouter.ai/api/v1` or `https://api.deepseek.com`
 * `LLM_MODEL`: e.g., `google/gemini-1.5-flash:free` or `deepseek-chat`
+* `DB_PATH`: *(Optional)* The SQLite file to cache (e.g., `seen_jobs.db`). Each value gets its own cache lineage, so you can keep separate "seen" histories per search domain. If unset, the workflow defaults to `seen_jobs.db`.
 
 ### 3. Execution
 
@@ -149,4 +152,5 @@ The workflow configured in `.github/workflows/daily_digest.yml` will:
 
 * Execute automatically via CRON schedule at `00:00 UTC` every day.
 * Support manual execution via the **Actions** tab by selecting "Daily Dynamic Job Digest" ➡️ **Run workflow**.
-* Retain state across runs using `actions/cache` for `seen_jobs.db` to prevent duplicate postings.
+* Retain state across runs using `actions/cache` on the `DB_PATH` file to prevent duplicate postings. The cache key is derived from `DB_PATH` plus a per-run id, so each run restores the latest history and writes the updated one back.
+* To verify the cache loaded: in the run logs, the "Cache SQLite Database" step shows `Cache restored from key: ...` on a hit (or `Cache not found` on a miss), and the scraper logs `📦 Opening database: ...` with the number of URLs already processed.

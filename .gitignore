@@ -1,5 +1,5 @@
 .env
-seen_jobs.db
+seen_jobs*.db
 __pycache__/
 context/
 venv/
