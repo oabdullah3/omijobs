@@ -105,6 +105,16 @@ async function main(): Promise<void> {
             : "";
     console.log(`  [${s.status}] ${s.adapter}${detail}`);
   }
+  // Manual-review trail: every dropped / deduped case with its link.
+  for (const c of summary.droppedCases) {
+    const link = c.link ?? "—";
+    console.log(`  [drop]   ${String(c.title ?? "<no title>")} — missing ${c.missing.join(", ")} — ${link}`);
+  }
+  for (const c of summary.dedupedCases) {
+    const link = c.link ?? "—";
+    const kept = c.keptLink ?? "—";
+    console.log(`  [dedup]  ${String(c.title ?? "<no title>")} @ ${String(c.company ?? "<no company>")} — ${link}  == kept ${kept}`);
+  }
   process.exit(exitCode(summary));
 }
 

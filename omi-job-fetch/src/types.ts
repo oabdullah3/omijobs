@@ -94,6 +94,22 @@ export interface AdapterStatus {
   meta?: Record<string, unknown>;
 }
 
+/** A job dropped by normalization: which required outputs were missing, plus its link for manual review. */
+export interface DroppedCase {
+  adapter: string;
+  missing: string[];
+  title: unknown;
+  link: string | null;
+}
+
+/** A job removed by content-signature dedup, and the kept job it was folded into. */
+export interface DedupedCase {
+  title: unknown;
+  company: unknown;
+  link: string | null;
+  keptLink: string | null;
+}
+
 export interface RunSummary {
   contract: EffectiveContract;
   input: ContractInput;
@@ -102,4 +118,6 @@ export interface RunSummary {
   jobs: number;
   dropped: number;
   duplicatesRemoved: number;
+  droppedCases: DroppedCase[];
+  dedupedCases: DedupedCase[];
 }

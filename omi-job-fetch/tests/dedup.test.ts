@@ -22,42 +22,58 @@ describe("signature", () => {
 
 describe("dedupJobs", () => {
   it("dedups identical title/company/location and merges sources", () => {
-    const jobs = dedupJobs(
+    const { kept, removed } = dedupJobs(
       [
         { title: "Grad Program", company: "HSBC", location: "Hong Kong", source: "gradconnection" },
         { title: "Grad Program", company: "HSBC", location: "Hong Kong", source: "jobsdb" },
       ],
       ["title", "company", "location"],
     );
-    expect(jobs).toHaveLength(1);
-    expect(jobs[0].sources).toEqual(["gradconnection", "jobsdb"]);
+    expect(kept).toHaveLength(1);
+    expect(kept[0].sources).toEqual(["gradconnection", "jobsdb"]);
+    expect(removed).toHaveLength(1);
+    expect(removed[0].title).toBe("Grad Program");
+    expect(removed[0].company).toBe("HSBC");
+  });
+
+  it("reports removed + kept links for manual review", () => {
+    const { kept, removed } = dedupJobs(
+      [
+        { title: "Grad Program", company: "HSBC", location: "Hong Kong", apply_url: "https://kept", source: "gc" },
+        { title: "Grad Program", company: "HSBC", location: "Hong Kong", apply_url: "https://removed", source: "jobsdb" },
+      ],
+      ["title", "company", "location"],
+    );
+    expect(kept).toHaveLength(1);
+    expect(removed[0].link).toBe("https://removed");
+    expect(removed[0].keptLink).toBe("https://kept");
   });
 
   it("keeps distinct jobs", () => {
-    const jobs = dedupJobs(
+    const { kept } = dedupJobs(
       [
         { title: "Grad Program", company: "HSBC", location: "Hong Kong", source: "gc" },
         { title: "Trading Intern", company: "Jane Street", location: "Hong Kong", source: "gc" },
       ],
       ["title", "company", "location"],
     );
-    expect(jobs).toHaveLength(2);
+    expect(kept).toHaveLength(2);
   });
 
   it("does not dedup when a config-extended field differs", () => {
-    const jobs = dedupJobs(
+    const { kept } = dedupJobs(
       [
         { title: "Grad Program", company: "HSBC", location: "Hong Kong", apply_url: "https://a", source: "gc" },
         { title: "Grad Program", company: "HSBC", location: "Hong Kong", apply_url: "https://b", source: "gc" },
       ],
       ["title", "company", "location", "apply_url"],
     );
-    expect(jobs).toHaveLength(2);
+    expect(kept).toHaveLength(2);
   });
 
   it("keeps jobs with an empty signature without deduping", () => {
-    const jobs = dedupJobs([{ title: "", company: "", location: "", source: "gc" }], ["title", "company", "location"]);
-    expect(jobs).toHaveLength(1);
-    expect(jobs[0].sources).toEqual(["gc"]);
+    const { kept } = dedupJobs([{ title: "", company: "", location: "", source: "gc" }], ["title", "company", "location"]);
+    expect(kept).toHaveLength(1);
+    expect(kept[0].sources).toEqual(["gc"]);
   });
 });

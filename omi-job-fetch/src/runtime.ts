@@ -1,9 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { buildInput, requiredOutputs, resolveContract } from "./contract.js";
-import { dedupJobs } from "./dedup.js";
-import { normalizeJob } from "./normalize.js";
-import type { Adapter, AdapterStatus, ContractInput, RunConfig, RunSummary } from "./types.js";
+import { dedupJobs, linkOf } from "./dedup.js";
+import { normalizeJobWithReason } from "./normalize.js";
+import type { Adapter, AdapterStatus, ContractInput, DedupedCase, DroppedCase, Job, RunConfig, RunSummary } from "./types.js";
 
 export const DEFAULT_DEDUP_FIELDS = ["title", "company", "location"];
 
@@ -34,6 +34,7 @@ export async function runPipeline(
 
   const statuses: AdapterStatus[] = [];
   const rawJobs: ContractInput[] = [];
+  const droppedCases: DroppedCase[] = [];
 
   for (const adapter of selected) {
     const familyConfig = adapter.manifest.family === "portal" ? config.portals.config : config.ats.config;
@@ -62,9 +63,25 @@ export async function runPipeline(
     try {
       const result = await adapter.run({ input: adapterInput, env: process.env, config: platformConfig });
       const durationMs = Date.now() - startedMs;
-      const jobs = result.jobs
-        .map((job) => normalizeJob(job, adapter.manifest.id, adapter.manifest.providedOutputs, required))
-        .filter((job): job is ContractInput => job !== null);
+      const jobs: Job[] = [];
+      for (const raw of result.jobs) {
+        const normalized = normalizeJobWithReason(
+          raw,
+          adapter.manifest.id,
+          adapter.manifest.providedOutputs,
+          required,
+        );
+        if ("job" in normalized) {
+          jobs.push(normalized.job);
+        } else {
+          droppedCases.push({
+            adapter: adapter.manifest.id,
+            missing: normalized.missing,
+            title: raw.title ?? null,
+            link: linkOf(raw),
+          });
+        }
+      }
       rawJobs.push(...jobs);
       statuses.push({
         adapter: adapter.manifest.id,
@@ -88,8 +105,8 @@ export async function runPipeline(
   }
 
   const dedupFields = config.dedup?.fields ?? DEFAULT_DEDUP_FIELDS;
-  const deduped = dedupJobs(rawJobs, dedupFields);
-  const duplicatesRemoved = rawJobs.length - deduped.length;
+  const { kept: deduped, removed: dedupedCases } = dedupJobs(rawJobs, dedupFields);
+  const duplicatesRemoved = dedupedCases.length;
 
   const outputBase = resolve(options.outputDir ?? "output");
   const runDir = resolve(outputBase, "runs", timestampId(options.now ?? new Date()));
@@ -106,6 +123,8 @@ export async function runPipeline(
     jobs: deduped.length,
     dropped: statuses.reduce((n, s) => n + (s.dropped ?? 0), 0),
     duplicatesRemoved,
+    droppedCases,
+    dedupedCases,
   };
   await writeFile(runFile, JSON.stringify(summary, null, 2), "utf8");
 

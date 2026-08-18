@@ -124,6 +124,13 @@ describe("runPipeline", () => {
       const result = await runPipeline(config(["gc", "jobsdb"]), { query: "q" }, [a, b], { outputDir: dir });
       expect(result.summary.jobs).toBe(1);
       expect(result.summary.duplicatesRemoved).toBe(1);
+      expect(result.summary.dedupedCases).toHaveLength(1);
+      expect(result.summary.dedupedCases[0]).toMatchObject({
+        title: "Grad",
+        company: "HSBC",
+        link: "https://b",
+        keptLink: "https://a",
+      });
       const jobs = JSON.parse(await readFile(result.jobsFile, "utf8"));
       expect(jobs[0].sources).toEqual(["gc", "jobsdb"]);
     } finally {
@@ -144,6 +151,27 @@ describe("runPipeline", () => {
       expect(status.dropped).toBe(1);
       expect(result.summary.jobs).toBe(1);
       expect(result.summary.dropped).toBe(1);
+      const cases = result.summary.droppedCases;
+      expect(cases).toHaveLength(1);
+      expect(cases[0]).toMatchObject({
+        adapter: "gc",
+        missing: ["apply_url"],
+        title: "NoUrl",
+        link: null,
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("records a dropped job's job_page_url link when apply_url is missing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
+    try {
+      const adapter = makeAdapter("gc", "portal", [
+        { title: "PageOnly", company: "C", location: "HK", job_page_url: "https://page" },
+      ]);
+      const result = await runPipeline(config(["gc"]), { query: "q" }, [adapter], { outputDir: dir });
+      expect(result.summary.droppedCases[0].link).toBe("https://page");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
