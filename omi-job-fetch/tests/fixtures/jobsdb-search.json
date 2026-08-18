@@ -1,0 +1,1654 @@
+{
+  "data": [
+    {
+      "advertiser": {
+        "id": "61941100",
+        "description": "Balyasny Asset Management"
+      },
+      "bulletPoints": [],
+      "branding": {},
+      "classifications": [
+        {
+          "classification": {
+            "id": "6281",
+            "description": "Information & Communication Technology"
+          },
+          "subclassification": {
+            "id": "6290",
+            "description": "Engineering - Software"
+          }
+        }
+      ],
+      "companyName": "Balyasny Asset Management",
+      "companyProfileStructuredDataId": 614560,
+      "displayType": "standard",
+      "employer": {
+        "id": "614560",
+        "name": "Balyasny Asset Management",
+        "companyId": "176603137842510",
+        "companyUrl": "https://hk.jobsdb.com/companies/balyasny-asset-management-176603137842510"
+      },
+      "id": "94002843",
+      "isFeatured": false,
+      "listingDate": "2026-08-16T11:10:20Z",
+      "listingDateDisplay": "1d ago",
+      "locations": [
+        {
+          "label": "Hong Kong SAR",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Hong Kong SAR"
+            }
+          ]
+        }
+      ],
+      "roleId": "engineering",
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "94002843",
+        "section": "MAIN",
+        "sectionRank": 1,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "Join us for a unique 10-week software engineering internship that provides personal and professional development in a creative collaborative team...",
+      "title": "Summer Associate, Software Engineering",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfMSIKfQ==",
+      "workTypes": [
+        "Full time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "61318000",
+        "description": "Hypebeast Hong Kong Limited"
+      },
+      "bulletPoints": [
+        "Diverse projects exposure with cross team working opportunities",
+        "Global leading cultural curated media platform with extensive business outlets",
+        "Recent graduate with positive and hard-working attitude are also welcome"
+      ],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/ba31a880-94fd-41d9-8838-3e62ef56e10d.1/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "6304",
+            "description": "Advertising, Arts & Media"
+          },
+          "subclassification": {
+            "id": "6306",
+            "description": "Art Direction"
+          }
+        }
+      ],
+      "companyName": "Hypebeast",
+      "companyProfileStructuredDataId": 408400,
+      "displayStyle": {
+        "search": "sourcrProfile"
+      },
+      "displayType": "standard",
+      "employer": {
+        "id": "408400",
+        "name": "Hypebeast",
+        "companyId": "171107335975651",
+        "companyUrl": "https://hk.jobsdb.com/companies/hypebeast-171107335975651"
+      },
+      "id": "94023870",
+      "isFeatured": false,
+      "listingDate": "2026-08-17T09:53:18Z",
+      "listingDateDisplay": "17h ago",
+      "locations": [
+        {
+          "label": "Tsuen Wan District",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Tsuen Wan District"
+            }
+          ]
+        }
+      ],
+      "roleId": "Creative-Intern",
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "94023870",
+        "section": "MAIN",
+        "sectionRank": 2,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "We're looking for a Creative Intern who is equal parts culture native and AI native — someone who already lives in the world Hypebeast covers.",
+      "title": "Creative Intern",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfMiIKfQ==",
+      "workTypes": [
+        "Part time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "61941100",
+        "description": "Hong Kong - Kwun Tong"
+      },
+      "bulletPoints": [],
+      "branding": {},
+      "classifications": [
+        {
+          "classification": {
+            "id": "6281",
+            "description": "Information & Communication Technology"
+          },
+          "subclassification": {
+            "id": "6301",
+            "description": "Testing & Quality Assurance"
+          }
+        }
+      ],
+      "companyProfileStructuredDataId": 0,
+      "displayType": "standard",
+      "id": "94028578",
+      "isFeatured": false,
+      "listingDate": "2026-08-17T09:00:00Z",
+      "listingDateDisplay": "18h ago",
+      "locations": [
+        {
+          "label": "Kwun Tong, Kwun Tong District",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Kwun Tong Kwun Tong District"
+            },
+            {
+              "contextualName": "Kwun Tong District"
+            }
+          ]
+        }
+      ],
+      "roleId": "Automation-Intern",
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "94028578",
+        "section": "MAIN",
+        "sectionRank": 3,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "We are seeking a motivated and curious AI & Automation Intern to join our Professional Services team in Hong Kong. This internship offers a...",
+      "title": "AI & Automation Intern",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfMyIKfQ==",
+      "workTypes": [
+        "Part time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "2",
+            "label": {
+              "text": "Hybrid"
+            }
+          }
+        ],
+        "displayText": "Hybrid"
+      }
+    },
+    {
+      "advertiser": {
+        "id": "62276399",
+        "description": "Zurich Insurance (Hong Kong)"
+      },
+      "bulletPoints": [
+        "Practical experience of AI applications in commercial environment",
+        "Good regional exposure to project management",
+        "Dynamic work environment in hybrid mode"
+      ],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/762b2a78-3874-4234-9ba4-dd861026b917.1/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "6281",
+            "description": "Information & Communication Technology"
+          },
+          "subclassification": {
+            "id": "6283",
+            "description": "Business/Systems Analysts"
+          }
+        }
+      ],
+      "companyName": "Zurich Insurance Group",
+      "companyProfileStructuredDataId": 48621,
+      "displayStyle": {
+        "search": "sourcrProfile"
+      },
+      "displayType": "standard",
+      "employer": {
+        "id": "48621",
+        "name": "Zurich Insurance Group",
+        "companyId": "171088632446823",
+        "companyUrl": "https://hk.jobsdb.com/companies/zurich-insurance-group-171088632446823"
+      },
+      "id": "93952558",
+      "isFeatured": false,
+      "listingDate": "2026-08-13T05:01:03Z",
+      "listingDateDisplay": "4d ago",
+      "locations": [
+        {
+          "label": "Quarry Bay, Eastern District",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Quarry Bay Eastern District"
+            },
+            {
+              "contextualName": "Eastern District"
+            }
+          ]
+        }
+      ],
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93952558",
+        "section": "MAIN",
+        "sectionRank": 4,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "A good learning opportunity to understand the operations of transformation projects with coverage of APAC region",
+      "title": "Intern (Transformation & Automation, Compliance APAC) (Part-time)",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfNCIKfQ==",
+      "workTypes": [
+        "Part time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "2",
+            "label": {
+              "text": "Hybrid"
+            }
+          }
+        ],
+        "displayText": "Hybrid"
+      }
+    },
+    {
+      "advertiser": {
+        "id": "61080231",
+        "description": "Qeelin Limited"
+      },
+      "bulletPoints": [],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/28f8adcd-afa4-48db-8357-49e54c25e11c.1/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "6076",
+            "description": "Consulting & Strategy"
+          },
+          "subclassification": {
+            "id": "6077",
+            "description": "Analysts"
+          }
+        }
+      ],
+      "companyName": "Qeelin Limited",
+      "companyProfileStructuredDataId": 545197,
+      "displayStyle": {
+        "search": "sourcrProfile"
+      },
+      "displayType": "standard",
+      "employer": {
+        "id": "545197",
+        "name": "Qeelin Limited"
+      },
+      "id": "93987223",
+      "isFeatured": false,
+      "listingDate": "2026-08-14T08:59:40Z",
+      "listingDateDisplay": "3d ago",
+      "locations": [
+        {
+          "label": "Wan Chai District",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Wan Chai District"
+            }
+          ]
+        }
+      ],
+      "roleId": "business-analyst",
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93987223",
+        "section": "MAIN",
+        "sectionRank": 5,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "This internship in the luxury sector focuses on leveraging advanced data analytics and high-impact presentations to drive decision-making",
+      "title": "Intern - Business Analyst  @Qeelin of Kering Group",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfNSIKfQ==",
+      "workTypes": [
+        "Contract/Temp"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "60337844",
+        "description": "China Mobile Hong Kong Company Limited"
+      },
+      "bulletPoints": [
+        "Part-time Internship (2 full day)",
+        "Assist the department with daily operational tasks and workflows",
+        "Excellent communication skills is perferred"
+      ],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/07a19f7d-db2f-41b7-9b4a-09e86f7fd5b4.1/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "6251",
+            "description": "Administration & Office Support"
+          },
+          "subclassification": {
+            "id": "6252",
+            "description": "Administrative Assistants"
+          }
+        }
+      ],
+      "companyName": "China Mobile Hong Kong",
+      "companyProfileStructuredDataId": 696708,
+      "displayStyle": {
+        "search": "sourcrProfile"
+      },
+      "displayType": "standard",
+      "employer": {
+        "id": "696708",
+        "name": "China Mobile Hong Kong",
+        "companyId": "172109902691062",
+        "companyUrl": "https://hk.jobsdb.com/companies/china-mobile-hong-kong-172109902691062"
+      },
+      "id": "93729107",
+      "isFeatured": false,
+      "listingDate": "2026-08-03T09:33:50Z",
+      "listingDateDisplay": "14d ago",
+      "locations": [
+        {
+          "label": "Kwai Hing, Kwai Tsing District",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Kwai Hing Kwai Tsing District"
+            },
+            {
+              "contextualName": "Kwai Tsing District"
+            }
+          ]
+        }
+      ],
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93729107",
+        "section": "MAIN",
+        "sectionRank": 6,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "1"
+        }
+      },
+      "teaser": "Assist the department with daily operational tasks and workflows\nAble to work at least 2 full day (9:00AM-6:00PM) per week",
+      "title": "Part-time Intern (Technical / Business General)",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfNiIKfQ==",
+      "workTypes": [
+        "Part time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "61941100",
+        "description": "Balyasny"
+      },
+      "bulletPoints": [],
+      "branding": {},
+      "classifications": [
+        {
+          "classification": {
+            "id": "6281",
+            "description": "Information & Communication Technology"
+          },
+          "subclassification": {
+            "id": "6290",
+            "description": "Engineering - Software"
+          }
+        }
+      ],
+      "companyProfileStructuredDataId": 0,
+      "displayType": "standard",
+      "id": "93993545",
+      "isFeatured": false,
+      "listingDate": "2026-08-14T08:00:00Z",
+      "listingDateDisplay": "3d ago",
+      "locations": [
+        {
+          "label": "Hong Kong SAR",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Hong Kong SAR"
+            }
+          ]
+        }
+      ],
+      "roleId": "Software-Engineering-Intern",
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93993545",
+        "section": "MAIN",
+        "sectionRank": 7,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "Join us for a unique 10-week software engineering internship that provides personal and professional development in a creative collaborative team...",
+      "title": "Software Engineering (Summer Internship)",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfNyIKfQ==",
+      "workTypes": [
+        "Full time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "61338061",
+        "description": "TP-Link Corporation Limited"
+      },
+      "bulletPoints": [
+        "Internship allowance provided",
+        "Exposure to real-world technical projects",
+        "Flexible Working Hour"
+      ],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/fcfcbfa0-e7a7-45f1-898b-d7751c7ba083.1/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "6281",
+            "description": "Information & Communication Technology"
+          },
+          "subclassification": {
+            "id": "6293",
+            "description": "Networks & Systems Administration"
+          }
+        }
+      ],
+      "companyName": "TP-Link",
+      "companyProfileStructuredDataId": 391704,
+      "displayStyle": {
+        "search": "sourcrProfile"
+      },
+      "displayType": "standard",
+      "employer": {
+        "id": "391704",
+        "name": "TP-Link",
+        "companyId": "174295204532979",
+        "companyUrl": "https://hk.jobsdb.com/companies/tp-link-174295204532979"
+      },
+      "id": "93798296",
+      "isFeatured": false,
+      "listingDate": "2026-08-06T02:17:19Z",
+      "listingDateDisplay": "12d ago",
+      "locations": [
+        {
+          "label": "Tsim Sha Tsui, Yau Tsim Mong District",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Tsim Sha Tsui Yau Tsim Mong District"
+            },
+            {
+              "contextualName": "Yau Tsim Mong District"
+            }
+          ]
+        }
+      ],
+      "roleId": "Technical-Intern",
+      "salaryLabel": "$15,000 – $18,000 per month",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93798296",
+        "section": "MAIN",
+        "sectionRank": 8,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "Internship offering Practical training and mentorship from the technical team",
+      "title": "Technical Intern (3–6 Months)",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfOCIKfQ==",
+      "workTypes": [
+        "Contract/Temp"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "62467135",
+        "description": "Centre for Perceptual and Interactive Intelligence (CPII) Limited"
+      },
+      "bulletPoints": [],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/8d2fedcb-ab0a-45a6-88f4-eecea768fd37.2/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "6123",
+            "description": "Education & Training"
+          },
+          "subclassification": {
+            "id": "6129",
+            "description": "Research & Fellowships"
+          }
+        }
+      ],
+      "companyName": "Centre For Perceptual And Interactive Intelligence",
+      "companyProfileStructuredDataId": 701008,
+      "displayType": "standard",
+      "employer": {
+        "id": "701008",
+        "name": "Centre For Perceptual And Interactive Intelligence"
+      },
+      "id": "93961067",
+      "isFeatured": false,
+      "listingDate": "2026-08-13T09:43:38Z",
+      "listingDateDisplay": "4d ago",
+      "locations": [
+        {
+          "label": "Science Park, Tai Po District",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Science Park Tai Po District"
+            },
+            {
+              "contextualName": "Tai Po District"
+            }
+          ]
+        }
+      ],
+      "roleId": "Research-Intern",
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93961067",
+        "section": "MAIN",
+        "sectionRank": 9,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "-Develop and prototype AI-driven applications\n-Evaluate and apply appropriate AI/LLM technologies\n-Translate research ideas into practical solutions",
+      "title": "Research Assistant (Intern) (Ref. CPII2026-011)",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfOSIKfQ==",
+      "workTypes": [
+        "Full time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "61293538",
+        "description": "Oursky Limited"
+      },
+      "bulletPoints": [],
+      "branding": {},
+      "classifications": [
+        {
+          "classification": {
+            "id": "6281",
+            "description": "Information & Communication Technology"
+          },
+          "subclassification": {
+            "id": "6290",
+            "description": "Engineering - Software"
+          }
+        }
+      ],
+      "companyName": "Oursky Limited",
+      "companyProfileStructuredDataId": 679750,
+      "displayType": "standard",
+      "employer": {
+        "id": "679750",
+        "name": "Oursky Limited",
+        "companyId": "171089769280180",
+        "companyUrl": "https://hk.jobsdb.com/companies/oursky-limited-171089769280180"
+      },
+      "id": "93448326",
+      "isFeatured": false,
+      "listingDate": "2026-07-20T23:46:17Z",
+      "listingDateDisplay": "28d ago",
+      "locations": [
+        {
+          "label": "Lai Chi Kok, Sham Shui Po District",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Lai Chi Kok Sham Shui Po District"
+            },
+            {
+              "contextualName": "Sham Shui Po District"
+            }
+          ]
+        }
+      ],
+      "roleId": "Software-Engineering-Intern",
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93448326",
+        "section": "MAIN",
+        "sectionRank": 10,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "1"
+        }
+      },
+      "tags": [
+        {
+          "type": "EXPIRES_SOON",
+          "label": "Expiring soon"
+        }
+      ],
+      "teaser": "Learn cutting-edge tech from senior developers, work on real products, and grow your path to a full-time engineering role with us.",
+      "title": "Software Engineering Intern",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfMTAiCn0=",
+      "workTypes": [
+        "Part time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "2",
+            "label": {
+              "text": "Hybrid"
+            }
+          }
+        ],
+        "displayText": "Hybrid"
+      }
+    },
+    {
+      "advertiser": {
+        "id": "61297578",
+        "description": "Quam Plus International Financial Limited"
+      },
+      "bulletPoints": [
+        "IT Internship",
+        "Listed financial institution"
+      ],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/5f5c7c6d-8f01-4cf0-9efa-dde633b8bda1.1/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "6281",
+            "description": "Information & Communication Technology"
+          },
+          "subclassification": {
+            "id": "6287",
+            "description": "Developers/Programmers"
+          }
+        }
+      ],
+      "companyName": "Quam Plus International Financial Limited",
+      "companyProfileStructuredDataId": 714815,
+      "displayStyle": {
+        "search": "sourcrProfile"
+      },
+      "displayType": "standard",
+      "employer": {
+        "id": "714815",
+        "name": "Quam Plus International Financial Limited"
+      },
+      "id": "93805845",
+      "isFeatured": false,
+      "listingDate": "2026-08-06T05:56:02Z",
+      "listingDateDisplay": "11d ago",
+      "locations": [
+        {
+          "label": "Hong Kong Island",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Hong Kong Island"
+            }
+          ]
+        }
+      ],
+      "roleId": "Artificial-Intelligence-Intern",
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93805845",
+        "section": "MAIN",
+        "sectionRank": 11,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "Assist in developing and integrating AI and web-based applications under supervision",
+      "title": "AI Intern",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfMTEiCn0=",
+      "workTypes": [
+        "Full time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "60337844",
+        "description": "China Mobile Hong Kong Company Limited"
+      },
+      "bulletPoints": [
+        "Part-Time Internship",
+        "Flexible working hours",
+        "2 days work week"
+      ],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/07a19f7d-db2f-41b7-9b4a-09e86f7fd5b4.1/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "6251",
+            "description": "Administration & Office Support"
+          },
+          "subclassification": {
+            "id": "6252",
+            "description": "Administrative Assistants"
+          }
+        }
+      ],
+      "companyName": "China Mobile Hong Kong",
+      "companyProfileStructuredDataId": 696708,
+      "displayStyle": {
+        "search": "sourcrProfile"
+      },
+      "displayType": "standard",
+      "employer": {
+        "id": "696708",
+        "name": "China Mobile Hong Kong",
+        "companyId": "172109902691062",
+        "companyUrl": "https://hk.jobsdb.com/companies/china-mobile-hong-kong-172109902691062"
+      },
+      "id": "93498906",
+      "isFeatured": false,
+      "listingDate": "2026-07-23T02:09:10Z",
+      "listingDateDisplay": "26d ago",
+      "locations": [
+        {
+          "label": "Kwai Hing, Kwai Tsing District",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Kwai Hing Kwai Tsing District"
+            },
+            {
+              "contextualName": "Kwai Tsing District"
+            }
+          ]
+        }
+      ],
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93498906",
+        "section": "MAIN",
+        "sectionRank": 12,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "tags": [
+        {
+          "type": "EXPIRES_SOON",
+          "label": "Expiring soon"
+        }
+      ],
+      "teaser": "Interns will be placed in business units to assist with daily operations and administrative tasks",
+      "title": "Part-time Intern (Commercial / General Stream)",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfMTIiCn0=",
+      "workTypes": [
+        "Part time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "61298506",
+        "description": "Knight Frank Petty Ltd"
+      },
+      "bulletPoints": [
+        "Look for passionate and technology-savvy undergraduate student",
+        "Design, development, and implementation of AI solutions"
+      ],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/8f1d0d2d-bf10-485e-99c7-2c13aaf31b05.1/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "6281",
+            "description": "Information & Communication Technology"
+          },
+          "subclassification": {
+            "id": "6283",
+            "description": "Business/Systems Analysts"
+          }
+        }
+      ],
+      "companyName": "Knight Frank",
+      "companyProfileStructuredDataId": 5077,
+      "displayStyle": {
+        "search": "sourcrProfile"
+      },
+      "displayType": "standard",
+      "employer": {
+        "id": "5077",
+        "name": "Knight Frank",
+        "companyId": "171088897720911",
+        "companyUrl": "https://hk.jobsdb.com/companies/knight-frank-171088897720911"
+      },
+      "id": "93729509",
+      "isFeatured": false,
+      "listingDate": "2026-08-03T09:52:48Z",
+      "listingDateDisplay": "14d ago",
+      "locations": [
+        {
+          "label": "Wan Chai, Wan Chai District",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Wan Chai Wan Chai District"
+            },
+            {
+              "contextualName": "Wan Chai District"
+            }
+          ]
+        }
+      ],
+      "roleId": "assistant_2",
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93729509",
+        "section": "MAIN",
+        "sectionRank": 13,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "A part-time role with exposure and hands-on experience in real estate industry.",
+      "title": "Part-time Assistant, AI Innovation",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfMTMiCn0=",
+      "workTypes": [
+        "Part time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "61344055",
+        "description": "Hashkey Digital Asset Group Limited"
+      },
+      "bulletPoints": [],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/69a87eff-6b32-41ee-b2d2-39756672cfa3.2/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "1203",
+            "description": "Banking & Financial Services"
+          },
+          "subclassification": {
+            "id": "1404",
+            "description": "Funds Management"
+          }
+        }
+      ],
+      "companyName": "Hashkey Digital Asset Group Limited",
+      "companyProfileStructuredDataId": 542140,
+      "displayType": "standard",
+      "employer": {
+        "id": "542140",
+        "name": "Hashkey Digital Asset Group Limited",
+        "companyId": "171089977111736",
+        "companyUrl": "https://hk.jobsdb.com/companies/hashkey-digital-asset-group-limited-171089977111736"
+      },
+      "id": "93611660",
+      "isFeatured": false,
+      "listingDate": "2026-08-07T09:20:38Z",
+      "listingDateDisplay": "10d ago",
+      "locations": [
+        {
+          "label": "Hong Kong Island",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Hong Kong Island"
+            }
+          ]
+        }
+      ],
+      "roleId": "Operations-Intern",
+      "salaryLabel": "$8,000 – $10,000 per month",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93611660",
+        "section": "MAIN",
+        "sectionRank": 14,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "Join us to run RWA ETF stablecoin ops, boost efficiency with AI tools and partner teams in regulated digital asset finance industry.",
+      "title": "Operations Intern",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfMTQiCn0=",
+      "workTypes": [
+        "Part time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "62857968",
+        "description": "Chan Yau Li and Li CPA Limited"
+      },
+      "bulletPoints": [],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/2b893186-b0b7-4f76-96bb-1d87293f5bde.2/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "1200",
+            "description": "Accounting"
+          },
+          "subclassification": {
+            "id": "6147",
+            "description": "Business Services & Corporate Advisory"
+          }
+        }
+      ],
+      "companyName": "Chan Yau Li and Li CPA Limited",
+      "companyProfileStructuredDataId": 3147741,
+      "displayType": "standard",
+      "employer": {
+        "id": "3147741",
+        "name": "Chan Yau Li and Li CPA Limited"
+      },
+      "id": "93982825",
+      "isFeatured": false,
+      "listingDate": "2026-08-14T06:50:22Z",
+      "listingDateDisplay": "3d ago",
+      "locations": [
+        {
+          "label": "Lai Chi Kok, Sham Shui Po District",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Lai Chi Kok Sham Shui Po District"
+            },
+            {
+              "contextualName": "Sham Shui Po District"
+            }
+          ]
+        }
+      ],
+      "salaryLabel": "$60 – $65 per hour",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93982825",
+        "section": "MAIN",
+        "sectionRank": 15,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "1"
+        }
+      },
+      "teaser": "Join CYLL as a Summer Intern and gain valuable experience in a fast-growing modern tech enabled CPA firm.",
+      "title": "Fall Intern (Part-time)",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfMTUiCn0=",
+      "workTypes": [
+        "Part time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "61399817",
+        "description": "Asia Allied Infrastructure Holdings Limited"
+      },
+      "bulletPoints": [
+        "Responsible for application development, testing and support",
+        "Assist Business analyst in requirement analysis and system design",
+        "Student in Information Systems, Computer Science, IT  or related disciplines"
+      ],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/eb1ff214-95c3-47f9-9f39-7e6b3a4a7f7a.1/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "6281",
+            "description": "Information & Communication Technology"
+          },
+          "subclassification": {
+            "id": "6291",
+            "description": "Help Desk & IT Support"
+          }
+        }
+      ],
+      "companyName": "Asia Allied Infrastructure Holdings Limited",
+      "companyProfileStructuredDataId": 453800,
+      "displayStyle": {
+        "search": "sourcrProfile"
+      },
+      "displayType": "standard",
+      "employer": {
+        "id": "453800",
+        "name": "Asia Allied Infrastructure Holdings Limited",
+        "companyId": "171090071914459",
+        "companyUrl": "https://hk.jobsdb.com/companies/asia-allied-infrastructure-holdings-limited-171090071914459"
+      },
+      "id": "93881345",
+      "isFeatured": false,
+      "listingDate": "2026-08-10T12:00:19Z",
+      "listingDateDisplay": "7d ago",
+      "locations": [
+        {
+          "label": "Lai Chi Kok, Sham Shui Po District",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Lai Chi Kok Sham Shui Po District"
+            },
+            {
+              "contextualName": "Sham Shui Po District"
+            }
+          ]
+        }
+      ],
+      "roleId": "it-traineeship",
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93881345",
+        "section": "MAIN",
+        "sectionRank": 16,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "IT Trainee",
+      "title": "IT Trainee (Application Development)",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfMTYiCn0=",
+      "workTypes": [
+        "Full time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "60186434",
+        "description": "Robert Bosch Co Ltd"
+      },
+      "bulletPoints": [],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/2e515db3-fb9e-4e8e-bcce-a7b56b0f1de5.1/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "6281",
+            "description": "Information & Communication Technology"
+          },
+          "subclassification": {
+            "id": "6290",
+            "description": "Engineering - Software"
+          }
+        }
+      ],
+      "companyName": "Bosch",
+      "companyProfileStructuredDataId": 5219,
+      "displayStyle": {
+        "search": "sourcrProfile"
+      },
+      "displayType": "standard",
+      "employer": {
+        "id": "5219",
+        "name": "Bosch",
+        "companyId": "172620893690932",
+        "companyUrl": "https://hk.jobsdb.com/companies/bosch-172620893690932"
+      },
+      "id": "93810323",
+      "isFeatured": false,
+      "listingDate": "2026-08-06T08:11:07Z",
+      "listingDateDisplay": "11d ago",
+      "locations": [
+        {
+          "label": "Hong Kong Island",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Hong Kong Island"
+            }
+          ]
+        }
+      ],
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93810323",
+        "section": "MAIN",
+        "sectionRank": 17,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "Provide assistance in Mobility Solutions, Purchasing - Technology & AI.",
+      "title": "Internship for Mobility Solutions Unit (M/BDO4-PU) (4 - 6 months)",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfMTciCn0=",
+      "workTypes": [
+        "Full time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "60303571",
+        "description": "Fosun International Securities Limited"
+      },
+      "bulletPoints": [
+        "留学生实习",
+        "周末双休",
+        "暑期实习"
+      ],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/16cb9280-a11d-4a27-b72d-b159e510f9b4.1/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "6043",
+            "description": "Retail & Consumer Products"
+          },
+          "subclassification": {
+            "id": "6050",
+            "description": "Retail Assistants"
+          }
+        }
+      ],
+      "companyName": "Fosun International Securities Limited",
+      "companyProfileStructuredDataId": 679779,
+      "displayStyle": {
+        "search": "sourcrProfile"
+      },
+      "displayType": "standard",
+      "employer": {
+        "id": "679779",
+        "name": "Fosun International Securities Limited"
+      },
+      "id": "93595200",
+      "isFeatured": false,
+      "listingDate": "2026-07-28T02:58:16Z",
+      "listingDateDisplay": "21d ago",
+      "locations": [
+        {
+          "label": "Hong Kong Island",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Hong Kong Island"
+            }
+          ]
+        }
+      ],
+      "salaryLabel": "$240 – $320 per month",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93595200",
+        "section": "MAIN",
+        "sectionRank": 18,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "我们是领先的综合性金融服务平台，深耕数字资产与科技金融领域，致力于为高净值客户及机构投资者提供专业的加密货币投资与财富管理服务。团队汇聚了来自顶尖金融机构和科技公司的资深人才，现诚邀对Web3/数字资产充满热情的优秀在校生加入，共同参与这一前沿赛道的业务拓展与客户运营。\n\n期待你的加入。",
+      "title": "数字资产业务实习生",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfMTgiCn0=",
+      "workTypes": [
+        "Full time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "61366731",
+        "description": "Fringebacker Limited"
+      },
+      "bulletPoints": [
+        "Bonus based on your success",
+        "Massive CV Builder: Power digital systems used by millions across HK/globally",
+        "Permanent Career Track: Direct pathway to full-time permanent staff roles"
+      ],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/78e1c6af-7046-48f2-8a91-c18f009e828d.1/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "6281",
+            "description": "Information & Communication Technology"
+          },
+          "subclassification": {
+            "id": "6295",
+            "description": "Programme & Project Management"
+          }
+        }
+      ],
+      "companyName": "FringeBacker Limited",
+      "companyProfileStructuredDataId": 541222,
+      "displayStyle": {
+        "search": "sourcrProfile"
+      },
+      "displayType": "standard",
+      "employer": {
+        "id": "541222",
+        "name": "FringeBacker Limited",
+        "companyId": "171090065423815",
+        "companyUrl": "https://hk.jobsdb.com/companies/fringebacker-limited-171090065423815"
+      },
+      "id": "93790436",
+      "isFeatured": false,
+      "listingDate": "2026-08-05T13:43:42Z",
+      "listingDateDisplay": "12d ago",
+      "locations": [
+        {
+          "label": "Kowloon",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "Kowloon"
+            }
+          ]
+        }
+      ],
+      "roleId": "operations-assistant",
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93790436",
+        "section": "MAIN",
+        "sectionRank": 19,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "1"
+        }
+      },
+      "teaser": "No coding needed! Run digital systems used by millions in HK and internationally. Fresh grads/gap-semester OK. But coding is a big bonus.",
+      "title": "Digital Project Operations Intern/Assistant (MegaEvents)",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfMTkiCn0=",
+      "workTypes": [
+        "Full time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "advertiser": {
+        "id": "61309381",
+        "description": "China Renaissance Securities (Hong Kong) Limited"
+      },
+      "bulletPoints": [],
+      "branding": {
+        "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/5d6cd95b-bde0-40c6-8a3e-f231ed3e65c2.2/jdpLogo"
+      },
+      "classifications": [
+        {
+          "classification": {
+            "id": "1203",
+            "description": "Banking & Financial Services"
+          },
+          "subclassification": {
+            "id": "6175",
+            "description": "Analysis & Reporting"
+          }
+        }
+      ],
+      "companyName": "China Renaissance Securities (Hong Kong) Limited",
+      "companyProfileStructuredDataId": 540958,
+      "displayType": "standard",
+      "employer": {
+        "id": "540958",
+        "name": "China Renaissance Securities (Hong Kong) Limited",
+        "companyId": "171089951957012",
+        "companyUrl": "https://hk.jobsdb.com/companies/china-renaissance-securities-hong-kong-limited-171089951957012"
+      },
+      "id": "93828015",
+      "isFeatured": false,
+      "listingDate": "2026-08-07T02:43:02Z",
+      "listingDateDisplay": "11d ago",
+      "locations": [
+        {
+          "label": "West Kowloon Cultural District, Yau Tsim Mong District",
+          "countryCode": "HK",
+          "seoHierarchy": [
+            {
+              "contextualName": "West Kowloon Cultural District Yau Tsim Mong District"
+            },
+            {
+              "contextualName": "Yau Tsim Mong District"
+            }
+          ]
+        }
+      ],
+      "roleId": "Research-Intern",
+      "salaryLabel": "",
+      "solMetadata": {
+        "searchRequestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+        "jobId": "93828015",
+        "section": "MAIN",
+        "sectionRank": 20,
+        "jobAdType": "ORGANIC",
+        "tags": {
+          "mordor__flights": "mordor_1054",
+          "mordor__s": "4"
+        }
+      },
+      "teaser": "A valuable opportunity to earn experience of equities research in a fast-paced securities firm.",
+      "title": "Equities Research internship",
+      "tracking": "ewogICJ0b2tlbiI6ICI4MWM3YzExMC1iMTkwLTQzNzItYTA0OC1hYzY4NDU0ZTk1MjNfMjAiCn0=",
+      "workTypes": [
+        "Part time"
+      ],
+      "workArrangements": {
+        "data": [
+          {
+            "id": "1",
+            "label": {
+              "text": "On-site"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "totalCount": 198,
+  "info": {
+    "timeTaken": 60,
+    "source": "JobSearch-sm",
+    "experiment": "mordor_1054",
+    "newSince": 1787022460
+  },
+  "userQueryId": "API7510990907172337504",
+  "sortModes": [
+    {
+      "isActive": true,
+      "name": "Relevance",
+      "value": "KeywordRelevance"
+    },
+    {
+      "isActive": false,
+      "name": "Date",
+      "value": "ListedDate"
+    }
+  ],
+  "solMetadata": {
+    "requestToken": "0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+    "token": "0~0ae3caf0-cbdd-4d5b-9df5-9f8d0c525cb7",
+    "keywords": "tech intern",
+    "sortMode": "RELEVANCE",
+    "pageSize": 20,
+    "pageNumber": 1,
+    "totalJobCount": 198,
+    "tags": {
+      "mordor:searchMarket": "UNIFIED_HK",
+      "mordor:result_count_rst": "0",
+      "mordor:result_count_vec": "163",
+      "mordor:rt": "53",
+      "mordor:count_vec": "163",
+      "mordor__flights": "mordor_1054",
+      "mordor:count_rst": "0",
+      "mordor:count_ir": "35",
+      "mordor:result_count_ir": "35"
+    }
+  },
+  "facets": {},
+  "searchParams": {
+    "sitekey": "HK-Main",
+    "keywords": "tech intern",
+    "page": "1"
+  }
+}
