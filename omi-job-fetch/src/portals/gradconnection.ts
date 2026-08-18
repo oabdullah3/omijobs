@@ -91,7 +91,9 @@ interface GcLocation {
  * GradConnection's campaignsearch `location=` param only accepts country-level
  * values of the form `{slug},{code},Country` (or the virtual `remote,{code},Remote`).
  * Free text and city/region values are silently ignored by the API.
- * Resolve free text against /api/locations/ so the filter actually applies.
+ * Resolve free text against /api/locations/ so the filter actually applies. If it
+ * resolves to nothing, the caller aborts the run rather than silently searching
+ * the whole country.
  */
 async function resolveLocationParam(
   country: string,
@@ -113,7 +115,10 @@ async function resolveLocationParam(
     nodes = (await res.json()) as GcLocation[];
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    return { param: null, note: `location resolution failed (${detail}); location filter skipped` };
+    return {
+      param: null,
+      note: `location "${freeText}" could not be resolved for GradConnection (${detail}); pass a real location or omit --location`,
+    };
   }
 
   // Names are "{Place} ({Country})"; match on the base name, case-insensitively.
@@ -123,7 +128,10 @@ async function resolveLocationParam(
   const prefix = target.length >= 3 ? nodes.find((n) => base(n.name).startsWith(target)) : undefined;
   const node = exact ?? prefix;
   if (!node) {
-    return { param: null, note: `location "${freeText}" not found in GradConnection; location filter skipped` };
+    return {
+      param: null,
+      note: `location "${freeText}" not found in GradConnection locations; pass a real location or omit --location`,
+    };
   }
 
   // Country-level nodes filter by country; city/region nodes expand to their parent country.
@@ -228,7 +236,10 @@ export const gradConnectionAdapter: Adapter = {
     const notes: string[] = [];
     if (typeof ctx.input.location === "string" && ctx.input.location.trim()) {
       const resolved = await resolveLocationParam(country, ctx.input.location);
-      if (resolved.param) params.set("location", resolved.param);
+      // An explicit location we can't resolve must not silently fall back to the
+      // whole country pool — abort so the CLI surfaces the reason.
+      if (!resolved.param) throw new Error(resolved.note ?? `location "${ctx.input.location.trim()}" could not be resolved for GradConnection`);
+      params.set("location", resolved.param);
       if (resolved.note) notes.push(resolved.note);
     }
 

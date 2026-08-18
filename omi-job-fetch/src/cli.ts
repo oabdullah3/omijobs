@@ -104,6 +104,11 @@ async function main(): Promise<void> {
             ? ` — ${s.error}`
             : "";
     console.log(`  [${s.status}] ${s.adapter}${detail}`);
+    // Adapter operational warnings (ignored inputs, caps, failures) — meta.warnings.
+    const warnings = Array.isArray(s.meta?.warnings) ? (s.meta.warnings as unknown[]) : [];
+    for (const w of warnings) {
+      if (typeof w === "string" && w.trim()) console.log(`  [warn]  ${s.adapter} — ${w}`);
+    }
   }
   // Manual-review trail: every dropped / deduped case with its link.
   for (const c of summary.droppedCases) {

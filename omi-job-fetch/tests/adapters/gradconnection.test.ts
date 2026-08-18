@@ -150,15 +150,17 @@ describe("gradConnectionAdapter", () => {
     expect(String(result.meta?.note ?? "")).toContain("scoped to china");
   });
 
-  it("omits the location param when the free text matches no node, and notes it", async () => {
+  it("aborts the run when the free text matches no location node", async () => {
     const state = mockFetch(loadFixture(), loadFixture("gradconnection-locations"));
-    const result = await gradConnectionAdapter.run({
-      input: { query: "tech intern", location: "Nowhereville" },
-      env: {},
-      config: { ...FAST },
-    });
-    expect(state.searchRequests[0]).not.toContain("location=");
-    expect(String(result.meta?.note ?? "")).toMatch(/not found/);
+    await expect(
+      gradConnectionAdapter.run({
+        input: { query: "tech intern", location: "Nowhereville" },
+        env: {},
+        config: { ...FAST },
+      }),
+    ).rejects.toThrow(/not found in GradConnection/);
+    expect(state.locationsCalls()).toBe(1);
+    expect(state.searchCount()).toBe(0); // no unfiltered fallback sweep
   });
 
   it("uses the virtual Remote location", async () => {
@@ -171,7 +173,7 @@ describe("gradConnectionAdapter", () => {
     expect(state.searchRequests[0]).toContain("location=remote%2CHK%2CRemote");
   });
 
-  it("skips the location filter with a note when the locations API fails", async () => {
+  it("aborts the run when the locations API fails", async () => {
     vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/api/locations/")) throw new Error("boom");
@@ -180,12 +182,13 @@ describe("gradConnectionAdapter", () => {
         headers: { "content-type": "application/json" },
       });
     });
-    const result = await gradConnectionAdapter.run({
-      input: { query: "tech intern", location: "Hong Kong" },
-      env: {},
-      config: { ...FAST },
-    });
-    expect(String(result.meta?.note ?? "")).toMatch(/location resolution failed/);
+    await expect(
+      gradConnectionAdapter.run({
+        input: { query: "tech intern", location: "Hong Kong" },
+        env: {},
+        config: { ...FAST },
+      }),
+    ).rejects.toThrow(/could not be resolved/);
   });
 
   it("maps campaigns to contract fields and filters events + notify-me placeholders", async () => {

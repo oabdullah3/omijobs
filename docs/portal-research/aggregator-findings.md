@@ -185,7 +185,7 @@ Sections below get filled as we run research sessions. Copy the §6 template fro
 ## CTgoodjobs
 
 **URL(s):** jobs.ctgoodjobs.hk (Next.js SSR app), www.ctgoodjobs.hk (legacy ASP portal), api01.ctgoodjobs.hk (JSON API)
-**Last tested:** 2026-08-16
+**Last tested:** 2026-08-18
 
 ### Auth
 
@@ -224,8 +224,8 @@ curl.exe -s -X POST "https://api01.ctgoodjobs.hk/job/api/jobs/search" `
 | `location` | ✅ | Body `locationIds` = district IDs from `/search/criteria` (e.g. `["005"]` Central → 521). Region IDs available (`"1_r"` = Hong Kong). |
 | `posted_within_days` | ✅ | Body `startPostDate` = number of days (`"7"` → 1009). |
 | `employment_type` | ✅ | Body `employmentTypeIds` (001 Full-time … 007 Internship → 80). Enum from `/search/criteria`. |
-| `sort` | ✅ | Body `sort`: `1` = relevance (also the default when omitted), `2` = site's keyword-search default. Verified discriminating; URL `sort=` is a no-op. |
-| `page` / `cursor` | ✅ | `pagingInputs.page` + `pageSize` (site uses 33). Page walk verified (page 2 → new IDs). Depth cap unverified. |
+| `sort` | ✅ | Body `sort`: `1` = relevance (also the API default when omitted — a page-1 with sort omitted is byte-identical to `sort:1`), `2` = date, newest-first by `publishTime` (verified 2026-08-18). URL `sort=` is a no-op. |
+| `page` / `cursor` | ✅ | `pagingInputs.page` + `pageSize` (33). Page walk sweeps all `jobsTotal` with **no depth cap** (verified 2026-08-18: a 121-job pool swept 4 pages → 100% coverage). |
 | `seniority` | ✅ | Body `gradeIds` (006 Entry level → 575); plus `workExpFrom`/`workExpTo` (years). Career-level enum from `/search/criteria`. |
 | `Other` | ✅ | `industryIds`, `salaryType`/`salaryFrom`/`salaryTo`, `workModelId`, `benefitIds`, `channelIds`, `serviceTypeIds`, and toggles (`isCvOptional`, `isGreatBenefit`, `isImApply`, `isCtMessage`). |
 
@@ -236,7 +236,7 @@ curl.exe -s -X POST "https://api01.ctgoodjobs.hk/job/api/jobs/search" `
 | `apply_url` | ✅ | `https://www.ctgoodjobs.hk/ctjob/apply/jobApply.asp?m_jobid=<id>` — derivable from `jobId`, no extra request. |
 | `job_page_url` | ✅ | `url` in API list (e.g. `/job/10222384/wealth-management-internship-program-welcome-fresh-graduates`). |
 | `external_id` | ✅ | `jobId` (numeric string). **Dedup key — mandatory** (see Reliability: pinned jobs duplicate). |
-| `title` | ✅ | `jobTitle`. Contains `<strong>` highlight tags on keyword matches — strip before use. |
+| `title` | ✅ | `jobTitle`. `<strong>` highlight tags appear on keyword matches in title **and** `companyName` — the adapter strips both. |
 | `company` | ✅ | `companyName` + `companyId` + `companyUrl`. |
 | `location` | ✅ | `locations` (human strings, e.g. `["Wan Chai","Wan Chai District","Hong Kong > Others"]`) **and** structured `jobLocations` with lat/long + eng/chi names. |
 | `description` | ⚠️ | Not in the API list. Full HTML only in the detail page's JSON-LD (`description`, ~3K chars) — 1 extra request per job. |
@@ -258,8 +258,8 @@ curl.exe -s -X POST "https://api01.ctgoodjobs.hk/job/api/jobs/search" `
 
 - **Deterministic.** Clean JSON, stable ordering per sort value; filter probes cleanly subset `jobsTotal` (4435 → 80/575/521/1009). The strongest retrieval surface of the portals researched so far.
 - **⚠️ Pinned/boosted jobs are prepended to every page AND can duplicate within a single page.** Observed: pageSize 33 → 37 items returned, 36 unique; internship probe contained `jobId` 10222384 twice. The adapter **must dedup by `jobId` across pages**, or pinned jobs (4/page) are collected as noise on every page and double-reported.
-- Pagination: `jobsTotal` / pageSize requests for a full sweep (33/page → ~135 for "finance"); depth cap unverified.
-- `visitor_id` cookie expires ~1 year out — reuse across sessions is likely fine, but re-fetching the vid endpoint is cheap (one request, no login).
+- Pagination: `jobsTotal` / pageSize requests for a full sweep (33/page → ~135 for "finance"); depth cap none found — a 121-job pool swept 4 pages to 100% coverage (2026-08-18).
+- `visitor_id` cookie expires ~1 year out — reuse across sessions is likely fine, but the adapter re-fetches the vid endpoint every run (one cheap request), so expiry is a non-issue.
 - **Short expiry windows observed:** the Central probe returned jobs expiring 8 days out (2026-08-23). Some listings close fast — `validThrough` is the guard, don't assume a listed job stays open.
 - No rate-limiting observed at ~15 requests in a session; throttle ~1 s between calls.
 - Description: apply URL and all list fields need zero extra requests; full description only for shortlisted jobs (1 detail request each).
@@ -275,10 +275,10 @@ curl.exe -s -X POST "https://api01.ctgoodjobs.hk/job/api/jobs/search" `
 
 ### Open questions / next steps
 
-- **Pagination depth cap:** does `pagingInputs.page` walk all `jobsTotal` (e.g. 135 pages for "finance") or cap early?
-- **`visitor_id` reuse:** probe whether a cached visitor_id from an earlier session still works (cookie says 1-year validity).
-- **Description in list:** `jobIdJobInfo` was null in captures — confirm whether any list field ever carries a description snippet to avoid the extra detail request.
-- **Sort semantics:** pin down what `sort:1` (relevance) vs `sort:2` (date?) actually order by.
+- ✅ **Pagination depth cap:** none — `pagingInputs.page` walks all `jobsTotal` (verified via the built adapter, 2026-08-18: a 121-job pool swept 4 pages → 100%).
+- ✅ **`visitor_id` reuse:** moot for the tool — the adapter fetches a fresh visitor-id every run (one cheap request).
+- ✅ **Description in list:** still absent — `jobIdJobInfo` was null in every live response; the adapter fetches the detail page for every job (121/121 in the 2026-08-18 run).
+- ✅ **Sort semantics:** `sort:1` = relevance and is byte-identical to omitting `sort` (API default); `sort:2` = date, newest-first by `publishTime` (verified 2026-08-18).
 - **Legacy fallback:** `www.ctgoodjobs.hk/english/search/joblist.asp` and `/ajax/ctjob/listing/joblist-enc.asp` — verify as an alternate retrieval surface if the API ever breaks.
 
 ---
