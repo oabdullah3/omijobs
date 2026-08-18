@@ -12,7 +12,7 @@
     "outputs": {}
   },
   "portals": {
-    "enabled": ["linkedin"],
+    "enabled": ["gradconnection"],
     "config": {
       "gradconnection": { "country": "hk" },
       "linkedin": {}

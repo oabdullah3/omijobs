@@ -10,17 +10,28 @@ function loadFixture(name: "gradconnection-search" | "gradconnection-locations" 
 
 const DEFAULT_DETAIL = { content: { banner: null, body: "<p>Full JD body</p>" } };
 
+/** Test knobs: no pacing, no retry sleeps. */
+const FAST = { country: "hk", delayMs: 0, retryBackoffMs: [0, 0, 0] };
+
+/**
+ * Mock fetch routed by endpoint:
+ *  - /api/locations/ → locations fixture
+ *  - /api/campaigns/ → campaign detail fixture
+ *  - campaignsearch → the search fixture at offset 0, an empty array at every offset ≥ 20
+ *    (the sweep stops on the first empty page).
+ */
 function mockFetch(
   campaignBody: unknown,
   locationsBody: unknown | null = null,
   campaignDetailBody: unknown = DEFAULT_DETAIL,
 ) {
   const state = {
-    capturedUrl: null as string | null,
+    searchRequests: [] as string[],
     locationsCount: 0,
     locationsCalls: () => state.locationsCount,
     campaignDetailCount: 0,
     campaignDetailCalls: () => state.campaignDetailCount,
+    searchCount: () => state.searchRequests.length,
   };
   vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -40,8 +51,10 @@ function mockFetch(
         headers: { "content-type": "application/json" },
       });
     }
-    state.capturedUrl = url;
-    return new Response(JSON.stringify(campaignBody), {
+    state.searchRequests.push(url);
+    const offset = Number(url.match(/offset=(\d+)/)?.[1] ?? 0);
+    const body = offset === 0 ? campaignBody : [];
+    return new Response(JSON.stringify(body), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
@@ -54,19 +67,61 @@ afterEach(() => {
 });
 
 describe("gradConnectionAdapter", () => {
-  it("builds the search URL from contract inputs", async () => {
+  it("builds the search URL from contract inputs and notes that page is ignored", async () => {
     const state = mockFetch(loadFixture(), loadFixture("gradconnection-locations"));
-    await gradConnectionAdapter.run({
+    const result = await gradConnectionAdapter.run({
       input: { query: "finance intern", location: "Hong Kong", employment_type: "internship", page: 2 },
       env: {},
-      config: { country: "hk" },
+      config: { ...FAST },
     });
-    expect(state.capturedUrl).toContain("https://hk.gradconnection.com/api/campaignsearch/?");
-    expect(state.capturedUrl).toContain("query=finance+intern");
-    expect(state.capturedUrl).toContain("location=hong-kong%2CHK%2CCountry");
-    expect(state.capturedUrl).toContain("job_type=internships");
-    expect(state.capturedUrl).toContain("limit=20");
-    expect(state.capturedUrl).toContain("offset=20");
+    const first = state.searchRequests[0];
+    expect(first).toContain("https://hk.gradconnection.com/api/campaignsearch/?");
+    expect(first).toContain("query=finance+intern");
+    expect(first).toContain("location=hong-kong%2CHK%2CCountry");
+    expect(first).toContain("job_type=internships");
+    expect(first).toContain("limit=20");
+    expect(first).toContain("offset=0");
+    expect(String(result.meta?.note ?? "")).toMatch(/page input ignored/);
+  });
+
+  it("sweeps every offset until the API returns an empty page", async () => {
+    const state = mockFetch(loadFixture());
+    const result = await gradConnectionAdapter.run({ input: { query: "finance intern" }, env: {}, config: { ...FAST } });
+    expect(state.searchCount()).toBe(2); // offset 0 (2 campaigns) then offset 20 ([])
+    expect(state.searchRequests[1]).toContain("offset=20");
+    expect(result.jobs).toHaveLength(2);
+    expect(result.meta?.pages).toBe(2);
+    expect(result.meta?.requests).toBe(2);
+    expect(result.meta?.uniqueFound).toBe(2);
+  });
+
+  it("dedups campaigns repeated across pages", async () => {
+    // Same fixture served at every offset — the repeated campaigns must not double.
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/campaigns/")) return new Response(JSON.stringify(DEFAULT_DETAIL), { status: 200 });
+      return new Response(JSON.stringify(loadFixture()), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const result = await gradConnectionAdapter.run({ input: { query: "x" }, env: {}, config: { ...FAST, maxPages: 3 } });
+    expect(result.jobs).toHaveLength(2);
+    expect(result.meta?.uniqueFound).toBe(2);
+    expect(result.meta?.pages).toBe(3);
+  });
+
+  it("stops at the maxPages cap and notes when the pool is larger", async () => {
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/campaigns/")) return new Response(JSON.stringify(DEFAULT_DETAIL), { status: 200 });
+      return new Response(JSON.stringify(loadFixture()), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const result = await gradConnectionAdapter.run({ input: { query: "x" }, env: {}, config: { ...FAST, maxPages: 3 } });
+    expect(String(result.meta?.note ?? "")).toMatch(/maxPages cap/);
   });
 
   it("resolves a country location to the structured {slug},{code},Country param", async () => {
@@ -74,10 +129,10 @@ describe("gradConnectionAdapter", () => {
     const result = await gradConnectionAdapter.run({
       input: { query: "tech intern", location: "Hong Kong" },
       env: {},
-      config: { country: "hk" },
+      config: { ...FAST },
     });
-    expect(state.capturedUrl).toContain("location=hong-kong%2CHK%2CCountry");
-    expect(state.capturedUrl).not.toContain("location=Hong+Kong");
+    expect(state.searchRequests[0]).toContain("location=hong-kong%2CHK%2CCountry");
+    expect(state.searchRequests[0]).not.toContain("location=Hong+Kong");
     expect(state.locationsCalls()).toBe(1);
     const note = String(result.meta?.note ?? "");
     expect(note).not.toMatch(/not found|resolution failed|city\/region-level/);
@@ -88,9 +143,9 @@ describe("gradConnectionAdapter", () => {
     const result = await gradConnectionAdapter.run({
       input: { query: "tech intern", location: "Beijing" },
       env: {},
-      config: { country: "hk" },
+      config: { ...FAST },
     });
-    expect(state.capturedUrl).toContain("location=china%2CCN%2CCountry");
+    expect(state.searchRequests[0]).toContain("location=china%2CCN%2CCountry");
     expect(String(result.meta?.note ?? "")).toMatch(/city\/region-level/);
     expect(String(result.meta?.note ?? "")).toContain("scoped to china");
   });
@@ -100,9 +155,9 @@ describe("gradConnectionAdapter", () => {
     const result = await gradConnectionAdapter.run({
       input: { query: "tech intern", location: "Nowhereville" },
       env: {},
-      config: { country: "hk" },
+      config: { ...FAST },
     });
-    expect(state.capturedUrl).not.toContain("location=");
+    expect(state.searchRequests[0]).not.toContain("location=");
     expect(String(result.meta?.note ?? "")).toMatch(/not found/);
   });
 
@@ -111,9 +166,9 @@ describe("gradConnectionAdapter", () => {
     await gradConnectionAdapter.run({
       input: { query: "tech intern", location: "remote" },
       env: {},
-      config: { country: "hk" },
+      config: { ...FAST },
     });
-    expect(state.capturedUrl).toContain("location=remote%2CHK%2CRemote");
+    expect(state.searchRequests[0]).toContain("location=remote%2CHK%2CRemote");
   });
 
   it("skips the location filter with a note when the locations API fails", async () => {
@@ -128,14 +183,14 @@ describe("gradConnectionAdapter", () => {
     const result = await gradConnectionAdapter.run({
       input: { query: "tech intern", location: "Hong Kong" },
       env: {},
-      config: { country: "hk" },
+      config: { ...FAST },
     });
     expect(String(result.meta?.note ?? "")).toMatch(/location resolution failed/);
   });
 
   it("maps campaigns to contract fields and filters events + notify-me placeholders", async () => {
     mockFetch(loadFixture());
-    const result = await gradConnectionAdapter.run({ input: { query: "finance intern" }, env: {}, config: { country: "hk" } });
+    const result = await gradConnectionAdapter.run({ input: { query: "finance intern" }, env: {}, config: { ...FAST } });
     expect(result.jobs).toHaveLength(2);
     expect(result.meta?.jdFetched).toBe(2);
     expect(result.meta?.jdFailed).toBe(0);
@@ -161,7 +216,7 @@ describe("gradConnectionAdapter", () => {
 
   it("falls back to the GC job page as apply_url for quick-apply listings (no external target/email)", async () => {
     mockFetch(loadFixture());
-    const result = await gradConnectionAdapter.run({ input: { query: "finance intern" }, env: {}, config: { country: "hk" } });
+    const result = await gradConnectionAdapter.run({ input: { query: "finance intern" }, env: {}, config: { ...FAST } });
     const quick = result.jobs[1];
     expect(quick.title).toBe("Group Fitness Intern (Junior Trainer)");
     expect(quick.apply_url).toBe(
@@ -175,7 +230,7 @@ describe("gradConnectionAdapter", () => {
     const result = await gradConnectionAdapter.run({
       input: { query: "finance intern" },
       env: {},
-      config: { country: "hk" },
+      config: { ...FAST },
     });
     expect(result.jobs).toHaveLength(2);
     expect(String(result.jobs[0].description)).toContain("Begin your career in Corporate and Institutional Banking.");
@@ -185,14 +240,14 @@ describe("gradConnectionAdapter", () => {
 
   it("omits the location param when location is not provided", async () => {
     const state = mockFetch(loadFixture());
-    await gradConnectionAdapter.run({ input: { query: "x" }, env: {}, config: { country: "hk" } });
-    expect(state.capturedUrl).not.toContain("location=");
+    await gradConnectionAdapter.run({ input: { query: "x" }, env: {}, config: { ...FAST } });
+    expect(state.searchRequests[0]).not.toContain("location=");
   });
 
   it("throws a descriptive error on non-200", async () => {
     vi.stubGlobal("fetch", async () => new Response("oops", { status: 500 }));
     await expect(
-      gradConnectionAdapter.run({ input: { query: "x" }, env: {}, config: {} }),
+      gradConnectionAdapter.run({ input: { query: "x" }, env: {}, config: { ...FAST } }),
     ).rejects.toThrow(/HTTP 500/);
   });
 });

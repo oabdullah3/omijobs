@@ -1,21 +1,28 @@
 import type { Adapter, AdapterResult } from "../types.js";
 
 /**
- * GradConnection adapter — the three non-obvious behaviors, for reference:
+ * GradConnection adapter — the four non-obvious behaviors, for reference:
  *
- * 1. Location. `config.country` selects the site SUBDOMAIN (hk / sg / au); the site
+ * 1. Sweep-all pagination. campaignsearch returns a fixed page of 20 (limit=20),
+ *    offset-walked, and exposes NO total count — the response is a bare JSON array
+ *    and an empty `[]` at the next offset is the end signal. The adapter walks
+ *    offset 0, 20, 40, … until an empty page (or config maxPages, default 100),
+ *    retrying each page with exponential backoff. `page` is therefore ignored
+ *    (noted in meta); filters resolve once, only the offset varies per request.
+ *
+ * 2. Location. `config.country` selects the site SUBDOMAIN (hk / sg / au); the site
  *    is partitioned per subdomain, so the search only ever sees that country's jobs.
  *    The `--location` input is a filter ON TOP of the subdomain. GradConnection only
  *    accepts structured values `{slug},{code},Country` (or `remote,{code},Remote`);
  *    free text and city/region values are silently ignored, so resolve them against
  *    /api/locations/ first — a city/region expands to its parent country.
  *
- * 2. Quick-apply. Campaigns with no external target URL and no target email are
+ * 3. Quick-apply. Campaigns with no external target URL and no target email are
  *    quick-apply listings: the job listing page IS the application link, so apply_url
  *    falls back to the GC job page (`/employers/<company>/jobs/<slug>/`). An
  *    empty-string origin_target_url counts as absent.
  *
- * 3. Full JD. The search response's `description` is a one-line snippet; the real JD
+ * 4. Full JD. The search response's `description` is a one-line snippet; the real JD
  *    lives in /api/campaigns/<id>/content.body (HTML, same as the job page). Enrich
  *    each job after the search (concurrency-capped), fall back to the snippet on
  *    fetch failure, and report coverage via meta.jdFetched / meta.jdFailed.
@@ -36,6 +43,22 @@ const JOB_TYPE_SLUGS: Record<string, string> = {
 const SEARCH_LIMIT = 20;
 /** Concurrent campaign-detail fetches when enriching descriptions with the full JD. */
 const DETAIL_CONCURRENCY = 4;
+
+/** Sweep retries/pacing. campaignsearch exposes no total count; pages are offset-walked
+ * until the API returns an empty array (the end signal). */
+const MAX_RETRIES = 3;
+const RETRY_BACKOFF_MS = [4000, 8000, 16000];
+const DEFAULT_DELAY_MS = 1000; // pacing between sweep requests
+const DEFAULT_MAX_PAGES = 100; // safety cap: 100 pages × 20 = 2000 jobs
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function intInRange(value: unknown, fallback: number, min: number): number {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n >= min ? n : fallback;
+}
 
 interface GcCampaign {
   id?: string;
@@ -185,13 +208,19 @@ export const gradConnectionAdapter: Adapter = {
     ],
     extraInputs: {
       country: { desc: "GradConnection country subdomain (hk, sg, au). Default: hk." },
+      delayMs: { desc: "Pacing (ms) between sweep requests. Default 1000." },
+      maxPages: { desc: "Hard cap on pages swept (20 jobs each). Default 100." },
+      retryBackoffMs: { desc: "Backoff schedule (ms) for page retries. Default [4000, 8000, 16000]." },
     },
   },
   async run(ctx): Promise<AdapterResult> {
     const country = String(ctx.config.country ?? "hk");
     const base = `https://${country}.gradconnection.com`;
-    const page = Number(ctx.input.page ?? 1);
-    const offset = (page - 1) * SEARCH_LIMIT;
+    const delayMs = intInRange(ctx.config.delayMs, DEFAULT_DELAY_MS, 0);
+    const maxPages = intInRange(ctx.config.maxPages, DEFAULT_MAX_PAGES, 1);
+    const backoff = Array.isArray(ctx.config.retryBackoffMs)
+      ? (ctx.config.retryBackoffMs as unknown[]).map(Number).filter((n) => Number.isFinite(n) && n >= 0)
+      : RETRY_BACKOFF_MS;
 
     const params = new URLSearchParams();
     if (typeof ctx.input.query === "string" && ctx.input.query.trim()) params.set("query", ctx.input.query.trim());
@@ -206,47 +235,84 @@ export const gradConnectionAdapter: Adapter = {
     const jobTypeSlug = toJobTypeSlug(ctx.input.employment_type);
     if (jobTypeSlug) params.set("job_type", jobTypeSlug);
     params.set("limit", String(SEARCH_LIMIT));
-    params.set("offset", String(offset));
+    if (Number(ctx.input.page ?? 1) > 1) notes.push("page input ignored; adapter sweeps every page until the API returns an empty one");
 
-    const url = `${base}/api/campaignsearch/?${params.toString()}`;
-    const res = await fetch(url, { headers: { accept: "application/json" } });
-    if (!res.ok) throw new Error(`GradConnection search failed: HTTP ${res.status} (${url})`);
-    const groups = (await res.json()) as GcGroup[];
+    // Filters (query/location/job_type) resolve once; only the offset varies per request.
+    const baseUrl = `${base}/api/campaignsearch/?${params.toString()}`;
 
     const jobs = [];
-    for (const group of groups) {
-      const employer = group.customer_organization?.name ?? null;
-      const employerSlug = group.customer_organization?.slug ?? "";
-      for (const campaign of group.campaigns ?? []) {
-        // Non-job entries mixed into results: "notify me" placeholders and events.
-        if (campaign.item_type !== "keyword_searched_campaign") continue;
-        if (campaign.is_event) continue;
-        const origin =
-          typeof campaign.origin_target_url === "string" && campaign.origin_target_url.trim()
-            ? campaign.origin_target_url.trim()
-            : null;
-        const slug = campaign.slug ?? "";
-        const jobPageUrl = slug && employerSlug ? `${base}/employers/${employerSlug}/jobs/${slug}/` : null;
-        // No external target or email: the GC job listing itself is the application
-        // (quick-apply campaigns), so apply_url falls back to the job page URL.
-        const applyUrl =
-          origin ?? (campaign.target_email ? `mailto:${campaign.target_email}` : null) ?? jobPageUrl;
-        const end = campaign.interval?.end ?? null;
-        jobs.push({
-          title: campaign.title ?? null,
-          company: employer,
-          location: (campaign.locations ?? []).join(", ") || null,
-          description: campaign.description ?? null,
-          apply_url: applyUrl,
-          job_page_url: jobPageUrl,
-          external_id: campaign.id ?? null,
-          posted_at: campaign.interval?.start ?? null,
-          expires_at: end,
-          is_open: end === null ? true : Date.parse(end) > Date.now(),
-          employment_type: normalizeJobType(campaign.job_type),
-        });
+    const seen = new Set<string>();
+    let offset = 0;
+    let pages = 0;
+    let requests = 0;
+    let capped = false;
+
+    // Sweep every page: campaignsearch exposes no total count, so walk offsets 0, 20,
+    // 40, … until the API returns an empty array (the verified end signal). GC is
+    // deterministic and reliable, so a page that fails all retries fails the run —
+    // silently truncating the pool would be worse than surfacing the outage.
+    const fetchPage = async (url: string): Promise<GcGroup[]> => {
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) await sleep(backoff[attempt - 1] ?? backoff[backoff.length - 1] ?? RETRY_BACKOFF_MS[0]);
+        requests++;
+        try {
+          const res = await fetch(url, { headers: { accept: "application/json" } });
+          if (!res.ok) throw new Error(`GradConnection search failed: HTTP ${res.status} (${url})`);
+          return (await res.json()) as GcGroup[];
+        } catch (error) {
+          if (attempt === MAX_RETRIES) throw error;
+        }
       }
+      throw new Error(`GradConnection search failed (${url})`);
+    };
+
+    while (pages < maxPages) {
+      await sleep(delayMs);
+      const groups = await fetchPage(`${baseUrl}&offset=${offset}`);
+      pages++;
+      if (groups.length === 0) break; // API returns [] once the offset passes the last result
+      if (pages >= maxPages) capped = true;
+
+      for (const group of groups) {
+        const employer = group.customer_organization?.name ?? null;
+        const employerSlug = group.customer_organization?.slug ?? "";
+        for (const campaign of group.campaigns ?? []) {
+          // Non-job entries mixed into results: "notify me" placeholders and events.
+          if (campaign.item_type !== "keyword_searched_campaign") continue;
+          if (campaign.is_event) continue;
+          const cid = typeof campaign.id === "string" ? campaign.id : "";
+          if (cid && seen.has(cid)) continue;
+          if (cid) seen.add(cid);
+          const origin =
+            typeof campaign.origin_target_url === "string" && campaign.origin_target_url.trim()
+              ? campaign.origin_target_url.trim()
+              : null;
+          const slug = campaign.slug ?? "";
+          const jobPageUrl = slug && employerSlug ? `${base}/employers/${employerSlug}/jobs/${slug}/` : null;
+          // No external target or email: the GC job listing itself is the application
+          // (quick-apply campaigns), so apply_url falls back to the job page URL.
+          const applyUrl =
+            origin ?? (campaign.target_email ? `mailto:${campaign.target_email}` : null) ?? jobPageUrl;
+          const end = campaign.interval?.end ?? null;
+          jobs.push({
+            title: campaign.title ?? null,
+            company: employer,
+            location: (campaign.locations ?? []).join(", ") || null,
+            description: campaign.description ?? null,
+            apply_url: applyUrl,
+            job_page_url: jobPageUrl,
+            external_id: campaign.id ?? null,
+            posted_at: campaign.interval?.start ?? null,
+            expires_at: end,
+            is_open: end === null ? true : Date.parse(end) > Date.now(),
+            employment_type: normalizeJobType(campaign.job_type),
+          });
+        }
+      }
+      offset += SEARCH_LIMIT;
     }
+    if (capped)
+      notes.push(`sweep hit the maxPages cap (${maxPages}); the pool may hold more than ${maxPages * SEARCH_LIMIT} jobs`);
 
     // Enrich each job's description with the full JD from /api/campaigns/<id>/.
     let jdFetched = 0;
@@ -270,13 +336,15 @@ export const gradConnectionAdapter: Adapter = {
       jobs,
       meta: {
         country,
-        searchUrl: url,
+        searchUrl: baseUrl,
         limit: SEARCH_LIMIT,
-        offset,
+        pages,
+        requests,
+        uniqueFound: seen.size,
         jdFetched,
         jdFailed,
         note: [
-          "description is the full JD (HTML) from /api/campaigns/<id>/content.body, falling back to the search snippet when the detail fetch fails; posted_at = interval.start (programme open date, not posting date); no posted-within filter (GC has no reliable posted date); apply_url falls back to the GC job page when a campaign has no external target or email (quick-apply listings).",
+          "adapter sweeps every offset (0, 20, 40, …) until campaignsearch returns an empty page — the API exposes no total count, so the empty page is the end signal; description is the full JD (HTML) from /api/campaigns/<id>/content.body, falling back to the search snippet when the detail fetch fails; posted_at = interval.start (programme open date, not posting date); no posted-within filter (GC has no reliable posted date); apply_url falls back to the GC job page when a campaign has no external target or email (quick-apply listings).",
           ...notes,
         ].join(" "),
       },

@@ -99,7 +99,7 @@ Sections below get filled as we run research sessions. Copy the §6 template fro
 ## JobsDB
 
 **URL(s):** hk.jobsdb.com
-**Last tested:** 2026-08-16
+**Last tested:** 2026-08-17 (adapter live-sweep)
 
 ### Auth
 
@@ -125,7 +125,7 @@ Sections below get filled as we run research sessions. Copy the §6 template fro
 | `posted_within_days` | ✅ | `daterange=<n>` works (7 → 188 results). ❌ No-ops: `datePosted`, `listedAt`. |
 | `employment_type` | ⚠️ | `worktype=<numeric Seek ID>` works (242=Full time→617, 243=Part time→135, 244=Contract/Temp→51, 245=Casual/Vacation→4). ❌ Text form (`worktype=Full time`) is a no-op. |
 | `sort` | ✅ | `sortmode=ListedDate` → newest first. |
-| `page` / `cursor` | ✅ | `page=<n>`; 20/page, `totalCount` drives pagination. Depth cap unverified. |
+| `page` / `cursor` | ✅ | `page=<n>`; 20/page, `totalCount` drives pagination. Sweep verified end-to-end (see Reliability). |
 | `seniority` | ❓ | Unverified. |
 
 ### Capability matrix — outputs
@@ -153,8 +153,8 @@ Sections below get filled as we run research sessions. Copy the §6 template fro
 
 ### Reliability notes
 
-- **Deterministic result set observed** — the no-op filter probes (`datePosted`, `listedAt`, text worktype) returned **identical job-ID sets** to baseline across separate requests, unlike LinkedIn's rotation. Explicit same-request-twice probe not yet run.
-- Pagination: `totalCount`/20 = 40 requests for a full "Finance Intern" HK sweep; page-depth cap unverified.
+- **Deterministic result set confirmed** — the no-op filter probes (`datePosted`, `listedAt`, text worktype) returned **identical job-ID sets** to baseline across separate requests, unlike LinkedIn's rotation; pages are **disjoint (0 id overlap between consecutive pages)**. The built adapter's live sweep fetched **198/198 jobs across 10 pages/requests (100% coverage)**, each id appearing exactly once.
+- Pagination: `totalCount`/20 = 40 requests for a full "Finance Intern" HK sweep. **Depth cap: none found** — pages walk the full `totalCount`-derived set; the adapter's `maxPages` guard (default 100 → 2000 jobs) bounds runaway sweeps.
 - Full description + apply URL require 1 job-page request per job (server-rendered HTML ~170KB). Search results alone give title/company/location/date/worktype but **not** description or apply URL.
 - No rate-limiting observed at ~15 requests in a session; throttle ~1 s between calls.
 
@@ -173,8 +173,8 @@ Sections below get filled as we run research sessions. Copy the §6 template fro
 
 ### Open questions / next steps
 
-- **Determinism probe:** run the identical `page=1` request twice and diff IDs — currently inferred from the no-op tests, not directly confirmed.
-- **Pagination depth:** does `page=<n>` walk all 800 (40 requests) or cap early (e.g. 10,000-job guard)?
+- **Determinism probe:** ⚠️ mostly resolved — pages are **disjoint** (0 id overlap between consecutive pages) and the live sweep returned each id exactly once across 10 pages. The strict same-`page=1`-twice probe still hasn't been run, but page-stability makes drift unlikely.
+- **Pagination depth:** ✅ resolved — `page=<n>` walks the full `totalCount`-derived set with no early cap (198 jobs → 10 pages, coverage 100%). The 800-job "Finance Intern" pool wasn't walked end-to-end in one run, but pagination is totalCount-driven and page-stable, so depth is unbounded in practice; the adapter's `maxPages` guard bounds the sweep.
 - **Expired jobs:** what does `/job/<id>` return for a dead listing (404? expired page?) — pick a stale ID from an old capture and probe.
 - **Link-out jobs:** the apply flow is JobsDB-hosted (`/job/<id>/apply`) for this capture; verify whether offsite postings redirect to an external ATS from the apply page.
 - `salaryLabel` coverage: is it usually empty, or populated for jobs that advertise salary?
@@ -481,7 +481,7 @@ curl.exe -s -A $EF_UA "https://job-application.efinancialcareers.com/v1/jobs/$EF
 ## GradConnection (HK: "JobsDB Grad")
 
 **URL(s):** hk.gradconnection.com, assets.cdn.gradconnection.com, api base `https://hk.gradconnection.com/api`
-**Last tested:** 2026-08-16
+**Last tested:** 2026-08-17 (adapter live-sweep)
 
 **Verdict:** keep as a **secondary (not primary) source** — a strong anonymous, deterministic API for graduate/internship *programme* listings, with direct external apply URLs (`origin_target_url`). But: **no sort, no posted-within filter, no total count in the search API**, and the site's apply button (track-link) requires a login for login-to-apply employers (the `origin_target_url` bypasses that).
 
@@ -522,7 +522,7 @@ curl.exe -s -A $GC_UA "https://hk.gradconnection.com/api/campaigns/$GC_ID/"
 | `posted_within_days` | ❌ | No date filter. `interval {start,end}` is returned on every campaign so you can post-filter client-side. |
 | `employment_type` | ✅ | `job_type` — `internships` / `graduate-jobs` / `entry-level-jobs` / `events` / `part-time-student-jobs` / `experienced-role` (also `job_time` = `part-time` / `full-time`). |
 | `sort` | ❌ | `ordering` is a server-side no-op (verified identical results); default relevance/ranking. |
-| `page` / `cursor` | ✅ | `offset` + `limit` (verified offset 0 → 20 → 40; `page` ignored; empty `[]` signals the end). No total count — paginate until `[]`, or read `count` from a browse page. |
+| `page` / `cursor` | ✅ | `offset` + `limit` (verified offset 0 → 20 → 40; `page` ignored; empty `[]` signals the end). No total count — paginate until `[]`, or read `count` from a browse page. **Sweep-all verified** via the built adapter: walks offsets 0, 20, 40, … to the empty page (live run: 5 requests, 11 real jobs, all enriched). |
 | `seniority` | ⚠️ | No dedicated arg; mapped via `job_type` taxonomy (intern vs graduate vs entry-level). |
 | Other | ✅ | `disciplines` (e.g. `banking-and-finance`), `work_rights` (e.g. `Hong Kong Permanent Resident` / slug `hk-hong-kong-citizen`). Verified all combine with `query`. |
 
@@ -563,7 +563,7 @@ curl.exe -s -A $GC_UA "https://hk.gradconnection.com/api/campaigns/$GC_ID/"
 - **`location` `Type` values** — Country verified; confirm City/Region variants (from `/api/locations/`) and whether they filter on the API.
 - **Which employers gate the track-link** — `login_to_apply_enabled` on the employer; confirm `origin_target_url` is always the real destination regardless.
 - **Push-apply (in-app) campaigns** — which `target_mode`/`is_pushapply_url` jobs submit via the `/apply/` form vs redirect; whether their apply needs a GradConnection account.
-- **Full enumeration** — no comprehensive detail sitemap; confirm offset-paginating `campaignsearch` with `query=` (empty) reaches every programme.
+- **Full enumeration** ✅ resolved — offset-paginating `campaignsearch` reaches every result: pages are walked until the API returns `[]` (the end signal). Verified live: 4 data pages → 80 unique campaign ids, **0 duplicates across pages**; the adapter's sweep (dedup by campaign `id`, `maxPages` cap) is the enumerated path.
 
 ---
 
