@@ -26,6 +26,12 @@ import type { Adapter, AdapterResult, Job } from "../types.js";
  *    relevance → KeywordRelevance, the default). seniority has no equivalent.
  *    is_open / expires_at are not exposed by the API.
  *
+ * 5. Company. `companyName` is absent on some listings (verified: 49 of 198 in a
+ *    tech-intern pool); those still carry the company name in `advertiser.description`,
+ *    which parseSearch falls back to. The value matches the detail page's
+ *    advertiser-name element (including placeholders like "Private Advertiser" for
+ *    anonymous postings).
+ *
  * Session discipline mirrors the other adapters: browser UA ($JD_UA, falling back to
  * a bundled Chrome UA), no cookies, retry-with-backoff on rate-limit signals.
  */
@@ -100,8 +106,10 @@ export function toText(html: string): string {
 
 /**
  * Parse a search response. The API returns `{ totalCount, data: [...], ... }` with
- * 20 jobs per page; each job carries id/title/companyName/locations/listingDate/
- * workTypes/teaser. totalCount drives the sweep.
+ * 20 jobs per page; each job carries id/title/locations/listingDate/workTypes/teaser.
+ * totalCount drives the sweep. company comes from `companyName`, but some listings
+ * omit it — those still carry the company name in `advertiser.description` (verified
+ * to match the detail page's advertiser-name element), so fall back to that.
  */
 export function parseSearch(json: unknown): { totalCount: number | null; cards: JobsDbCard[] } {
   const obj = json as { totalCount?: unknown; data?: unknown[] };
@@ -111,7 +119,13 @@ export function parseSearch(json: unknown): { totalCount: number | null; cards: 
     const j = item as Record<string, unknown>;
     const id = typeof j.id === "string" ? j.id : String(j.id ?? "");
     const title = typeof j.title === "string" ? j.title : null;
-    const company = typeof j.companyName === "string" ? j.companyName : null;
+    const companyName = typeof j.companyName === "string" ? j.companyName.trim() : "";
+    const advertiser = j.advertiser as { description?: unknown } | undefined;
+    const advName =
+      typeof advertiser?.description === "string" && advertiser.description.trim()
+        ? advertiser.description.trim()
+        : null;
+    const company = companyName || advName;
     const locations = Array.isArray(j.locations)
       ? (j.locations as { label?: unknown }[]).map((l) => (typeof l?.label === "string" ? l.label : "")).filter(Boolean)
       : [];

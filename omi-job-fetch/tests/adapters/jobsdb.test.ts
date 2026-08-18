@@ -62,6 +62,20 @@ describe("parseSearch", () => {
     expect(c.workTypes).toBe("Full time");
     expect(c.teaser).toBeTruthy();
   });
+
+  it("falls back to advertiser.description when companyName is absent", () => {
+    const { cards } = parseSearch({
+      totalCount: 2,
+      data: [
+        { id: "1", title: "No CompanyName Job", advertiser: { description: "Balyasny" } },
+        { id: "2", title: "Empty CompanyName", companyName: "", advertiser: { description: "Nokia (China) Investment Co Ltd" } },
+        { id: "3", title: "No advertiser either" },
+      ],
+    });
+    expect(cards[0].company).toBe("Balyasny");
+    expect(cards[1].company).toBe("Nokia (China) Investment Co Ltd");
+    expect(cards[2].company).toBeNull();
+  });
 });
 
 describe("parseDetail", () => {
