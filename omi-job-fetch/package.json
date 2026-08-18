@@ -1,0 +1,20 @@
+{
+  "name": "omi-job-fetch",
+  "version": "0.1.0",
+  "description": "Deterministic programmatic job retrieval from aggregator portals and ATS backends",
+  "type": "module",
+  "bin": { "omi-job-fetch": "./dist/cli.js" },
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "keywords": ["jobs", "ats", "recruitment", "scraper"],
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}

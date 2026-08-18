@@ -1,0 +1,20 @@
+{
+  "contract": {
+    "inputs": {
+      "query": { "required": true, "default": null },
+      "location": { "required": false, "default": null },
+      "posted_within_days": { "required": false, "default": null },
+      "employment_type": { "required": false, "default": null },
+      "sort": { "required": false, "default": null },
+      "page": { "required": false, "default": 1 },
+      "seniority": { "required": false, "default": null }
+    },
+    "outputs": {}
+  },
+  "portals": {
+    "enabled": ["gradconnection"],
+    "config": { "gradconnection": { "country": "hk" } }
+  },
+  "ats": { "enabled": [], "config": {} },
+  "dedup": { "fields": ["title", "company", "location"] }
+}
