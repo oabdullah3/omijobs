@@ -12,12 +12,13 @@
     "outputs": {}
   },
   "portals": {
-    "enabled": ["ctgoodjobs"],
+    "enabled": ["linkedin", "jobsdb", "gradconnection", "efinancialcareers", "ctgoodjobs"],
     "config": {
-      "gradconnection": { "country": "hk" },
+      "gradconnection": {},
       "linkedin": {},
       "jobsdb": {},
-      "ctgoodjobs": {}
+      "ctgoodjobs": {},
+      "efinancialcareers":{}
     }
   },
   "ats": { "enabled": [], "config": {} },

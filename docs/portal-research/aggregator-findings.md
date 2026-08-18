@@ -380,7 +380,7 @@ curl.exe -s -X POST "https://api.moovup.com/v2/seeker" `
 ## eFinancialCareers
 
 **URL(s):** efinancialcareers.hk, job-search-ui.efinancialcareers.com, job-application.efinancialcareers.com
-**Last tested:** 2026-08-16
+**Last tested:** 2026-08-18 (adapter live-sweep, pageSize=200)
 
 **Verdict:** keep — strong deterministic retrieval surface. Search API + apply-URL API both work anonymously (browser UA only, no cookies, no keys). Full description inline in the list (no extra request); direct external-ATS apply URL for ~73% of HK jobs via the `apply-information` API. Gaps: `postedDate` filter capped at 7 days, and `sortBy` is a server-side no-op (sort client-side on `postedDate`).
 
@@ -418,7 +418,7 @@ curl.exe -s -A $EF_UA "https://job-application.efinancialcareers.com/v1/jobs/$EF
 | `posted_within_days` | ⚠️ | `filters.postedDate` — enum `ONE` / `THREE` / `SEVEN` only, **max 7 days** (other values 500). HK bucket counts: Today 345, 3d 953, 7d 1924 of 2,875. |
 | `employment_type` | ✅ | `filters.employmentType` — `FULL_TIME` / `PART_TIME` (HK: 2870 / 5). |
 | `sort` | ⚠️ | `sortBy` accepted and echoed but **server-side no-op** — `relevance` and `newest` returned identical orderings. Sort client-side on `postedDate`. |
-| `page` / `cursor` | ✅ | `page` + `pageSize` (30 verified; `_links.last` page=96 for HK). |
+| `page` / `cursor` | ✅ | `page` + `pageSize`. **pageSize=200 verified** (2026-08-18) — the full HK pool then needs ~15 requests instead of 96 at pageSize 30; the adapter sweeps every page from `meta.totalResults` and ignores the `page` input. |
 | `seniority` | ✅ | `filters.seniority` — `INTERN_GRADUATE` / `ANALYST` / `ASSOCIATE_MID_LEVEL` / `AVP_SENIOR` / `VP_PRINCIPAL` / `SVP_HEAD_OF` / `DIRECTOR` / `MANAGING_DIRECTOR`. HK + INTERN_GRADUATE → 37. |
 | `Other` | ✅ | `filters.positionType` (`PERMANENT` / `CONTRACT` / `TEMPORARY` / `INTERNSHIPS_AND_GRADUATE_TRAINEE`), `filters.workArrangementType` (`IN_OFFICE` / `HYBRID` / `FLEXIBLE` / `REMOTE`), `filters.experienceLevel` (`NO_EXPERIENCE` … `MORE_THAN_FIFTEEN_YEARS_EXPERIENCE`), `filters.salaryCurrency`, `filters.salaryRange`, `filters.sectors`, `filters.clientBrandNameFilter`. |
 
@@ -449,7 +449,7 @@ curl.exe -s -A $EF_UA "https://job-application.efinancialcareers.com/v1/jobs/$EF
 ### Reliability notes
 
 - **Deterministic.** Repeat query → 10/10 identical job IDs (unlike LinkedIn's rotation).
-- Pagination: 2,875 HK jobs ≈ 96 pages at pageSize 30; `_links` HATEOAS (`next`/`last`) gives the walk.
+- Pagination: 2,875 HK jobs ≈ 15 pages at pageSize 200 (verified working); `_links` HATEOAS (`next`/`last`) gives the walk, though the adapter computes it from `meta.totalResults`.
 - Location + filters combine cleanly (HK + 7d → 1,924; HK + intern seniority → 37).
 - **Apply URL costs 1 extra request per job** (apply-information API) — or scrape it from the detail page HTML (same cost, less structured). No bulk apply-URL endpoint.
 - External-application ratio ~73% of HK listings; the rest are in-app (questionnaire).
@@ -469,7 +469,7 @@ curl.exe -s -A $EF_UA "https://job-application.efinancialcareers.com/v1/jobs/$EF
 
 ### Open questions / next steps
 
-- **Max `pageSize`** — 30 verified; find the cap (pageSize=100? 200?) to cut page-walk count.
+- **Max `pageSize`** — ✅ **200 verified** (2026-08-18 live sweep); the adapter uses 200/page. Beyond 200 untested.
 - **`sortBy` semantics** — confirm it's a hard no-op or whether some values (e.g. a date sort) do reorder; until then client-side sort on `postedDate`.
 - **postedDate beyond 7 days** — any hidden param (`postedFrom`/`postedAfter` date-range)? Currently capped at `SEVEN`.
 - **`login_required` on apply-information** — does it ever gate the URL for particular jobs/companies, or is the flag always true for anonymous?

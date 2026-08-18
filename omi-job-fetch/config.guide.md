@@ -21,11 +21,12 @@ real — pulled from the adapters' manifests and code. Contract-input flags (`--
     "outputs": {}             // output definitions; leave as-is
   },
   "portals": {
-    "enabled": ["ctgoodjobs", "gradconnection", "jobsdb", "linkedin"],  // which adapters run
+    "enabled": ["ctgoodjobs", "efinancialcareers", "gradconnection", "jobsdb", "linkedin"],  // which adapters run
     "config": {
       "gradconnection": { "country": "hk" },   // per-adapter options (see tables below)
       "linkedin": {},
       "jobsdb": {},
+      "efinancialcareers": {},
       "ctgoodjobs": {}
     }
   },
@@ -35,7 +36,7 @@ real — pulled from the adapters' manifests and code. Contract-input flags (`--
 ```
 
 - **`portals.enabled`** is the on/off switch. Any registered adapter not listed is skipped.
-  Registered ids today: `ctgoodjobs`, `gradconnection`, `jobsdb`, `linkedin`.
+  Registered ids today: `ctgoodjobs`, `efinancialcareers`, `gradconnection`, `jobsdb`, `linkedin`.
 - **`portals.config.<id>`** holds per-adapter knobs (pacing, caps, scope). Omitted keys fall
   back to defaults.
 - **`dedup.fields`** sets the signature for cross-adapter duplicate removal. Jobs with the
@@ -58,6 +59,7 @@ real — pulled from the adapters' manifests and code. Contract-input flags (`--
 |---|---|---|
 | `JD_UA` | jobsdb, ctgoodjobs | Browser User-Agent sent to the portal. Default: bundled Chrome UA. |
 | `LI_UA` | linkedin | Browser User-Agent sent to LinkedIn's guest endpoints. Default: bundled Chrome UA. |
+| `EF_UA` | efinancialcareers | Browser User-Agent sent to eFinancialCareers' endpoints. Default: bundled Chrome UA. |
 
 ---
 
@@ -155,6 +157,41 @@ scope**.
 
 ---
 
+## eFinancialCareers — `efinancialcareers`
+
+Finance-sector job board (global site, `countryCode2` scopes the search). Deterministic GET
+search (200/page driven by `meta.totalResults`), **full JD inline in the list** (no detail
+request), and the apply URL resolved per-job: the apply-information API for external
+applications (~73% of HK), the detail page otherwise. Country-scoped by `countryCode2` —
+**location narrows within that country**.
+
+### Config options (`portals.config.efinancialcareers`)
+
+| Option | Default | Effect |
+|---|---|---|
+| `countryCode2` | `HK` | Country scope for the search (HK, SG, …). This is the geographic scope. |
+| `ua` (env `EF_UA`) | bundled Chrome UA | User-Agent for all requests. |
+| `delayMs` | 1000 | Pacing between sweep requests. |
+| `maxPages` | 100 | Hard cap on pages swept (200 jobs each → 20,000-job ceiling). |
+| `retryBackoffMs` | [4000, 8000, 16000] | Backoff schedule for retries. |
+| `detailConcurrency` | 4 | Concurrent apply-URL fetches (external jobs only). |
+| `detailDelayMs` | 0 | Pacing between apply-URL requests. |
+
+### Input parameters that make an impact
+
+| Contract input | Maps to | Impact |
+|---|---|---|
+| `query` | `q` | Keyword search. |
+| `location` | `location` | Free text, georesolved server-side ("Hong Kong" → Country precision, radius 40). |
+| `posted_within_days` | `filters.postedDate` | ONE/THREE/SEVEN — **capped at 7 days**; larger requests are skipped with a note (post-filter client-side), not silently narrowed. |
+| `employment_type` | `filters.employmentType` + `filters.positionType` | full-time→FULL_TIME, part-time→PART_TIME; permanent→PERMANENT, contract→CONTRACT, temporary→TEMPORARY, internship/intern→INTERNSHIPS_AND_GRADUATE_TRAINEE (the last four are positionType). |
+| `seniority` | `filters.seniority` | entry/intern→INTERN_GRADUATE, junior→ANALYST, middle→ASSOCIATE_MID_LEVEL, senior→AVP_SENIOR. |
+
+`sort` is unsupported (eFC `sortBy` is a server-side no-op — verified identical orderings);
+`page` is ignored (full sweep).
+
+---
+
 ## LinkedIn — `linkedin`
 
 Global job search via LinkedIn's guest endpoints. **The only portal with no inherent
@@ -190,16 +227,17 @@ captured.
 
 Which input actually does something per portal (✓ = honors, ✗ = no-op/ignored):
 
-| Input | ctgoodjobs | gradconnection | jobsdb | linkedin |
-|---|---|---|---|---|
-| `query` | ✓ keyword (strict) | ✓ | ✓ keyword (fuzzy) | ✓ |
-| `location` | ✗ ignored (HK-only) | ✓ country-level only | ✓ free text | ✓ (scopes, not narrows) |
-| `posted_within_days` | ✓ `startPostDate` | ✗ | ✓ `daterange` | ✗ |
-| `employment_type` | ✓ 001–007 | ✓ job_type slug | ✓ worktype 242–245 | ✗ |
-| `seniority` | ✓ gradeIds | ✗ | ✗ | ✗ |
-| `sort` | ✓ 1=rel, 2=date | ✗ | ✓ ListedDate/KeywordRelevance | ✗ |
-| `page` | ✗ sweep-all | ✗ sweep-all | ✗ sweep-all | ✗ sweep-all |
+| Input | ctgoodjobs | gradconnection | jobsdb | efinancialcareers | linkedin |
+|---|---|---|---|---|---|
+| `query` | ✓ keyword (strict) | ✓ | ✓ keyword (fuzzy) | ✓ | ✓ |
+| `location` | ✗ ignored (HK-only) | ✓ country-level only | ✓ free text | ✓ free text (georesolved) | ✓ (scopes, not narrows) |
+| `posted_within_days` | ✓ `startPostDate` | ✗ | ✓ `daterange` | ✓ `filters.postedDate` (≤7d) | ✗ |
+| `employment_type` | ✓ 001–007 | ✓ job_type slug | ✓ worktype 242–245 | ✓ employmentType/positionType | ✗ |
+| `seniority` | ✓ gradeIds | ✗ | ✗ | ✓ `filters.seniority` | ✗ |
+| `sort` | ✓ 1=rel, 2=date | ✗ | ✓ ListedDate/KeywordRelevance | ✗ (server-side no-op) | ✗ |
+| `page` | ✗ sweep-all | ✗ sweep-all | ✗ sweep-all | ✗ sweep-all | ✗ sweep-all |
 
 Geography at a glance: **ctgoodjobs, gradconnection, jobsdb** are inherently HK-scoped
-(ctgoodjobs ignores location; gradconnection/jobsdb narrow by it); **linkedin** is global
-unless you pass a location.
+(ctgoodjobs ignores location; gradconnection/jobsdb narrow by it); **efinancialcareers** is
+country-scoped by `countryCode2` (location narrows within it); **linkedin** is global unless
+you pass a location.

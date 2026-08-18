@@ -1,0 +1,95 @@
+{
+  "data": [
+    {
+      "id": "RY1tpMWK0JoBaoL3",
+      "jobId": "24569180",
+      "detailsPageUrl": "/jobs-Hong_Kong-Hong_Kong-Quantitative_Systematic_Trading_Internship-Masters_Summer_2027.id24569180",
+      "title": "Quantitative Systematic Trading Internship - Master's: Summer 2027",
+      "jobLocation": {
+        "displayName": "Hong Kong",
+        "city": "Hong Kong",
+        "state": "Hong Kong",
+        "country": "Hong Kong",
+        "region": "Asia"
+      },
+      "postedDate": "2026-08-16T11:40:00.250Z",
+      "expirationDate": "2026-09-03T23:45:00.000Z",
+      "expirationDateType": "INVENTORY",
+      "employmentType": "Full time",
+      "isExternalApplication": true,
+      "companyName": "Susquehanna International Group",
+      "clientBrandName": "Susquehanna International Group",
+      "description": "<p>Join the <strong>Quantitative Systematic Trading</strong> internship and build models.</p><ul><li>Python</li><li>Statistics</li></ul>",
+      "positionType": "INTERNSHIPS_AND_GRADUATE_TRAINEE",
+      "sectors": ["Banking"]
+    },
+    {
+      "id": "Kd9abcXYZ12opQr",
+      "jobId": "24569181",
+      "detailsPageUrl": "/jobs-Hong_Kong-Hong_Kong-Compliance-Analyst-Officer.id24569181",
+      "title": "Compliance Analyst, Officer",
+      "jobLocation": {
+        "displayName": "Hong Kong",
+        "city": "Hong Kong",
+        "country": "Hong Kong"
+      },
+      "postedDate": "2026-08-15T02:00:00.000Z",
+      "expirationDate": "2026-09-30T00:00:00.000Z",
+      "expirationDateType": "FIXED",
+      "employmentType": "Full time",
+      "isExternalApplication": false,
+      "companyName": "A Sizable Bank",
+      "clientBrandName": "A Sizable Bank",
+      "description": "<p>Own regulatory reporting for the HK entity.</p>",
+      "positionType": "PERMANENT"
+    },
+    {
+      "id": "Mx88fgh9900WwWe",
+      "jobId": "24569182",
+      "detailsPageUrl": "/jobs-Hong_Kong-Hong_Kong-Risk-Manager.id24569182",
+      "title": "Risk Manager",
+      "jobLocation": {
+        "displayName": "Hong Kong",
+        "city": "Hong Kong",
+        "country": "Hong Kong"
+      },
+      "postedDate": "2026-08-14T08:00:00.000Z",
+      "expirationDate": "2026-09-15T00:00:00.000Z",
+      "expirationDateType": "FIXED",
+      "employmentType": "Full time",
+      "isExternalApplication": true,
+      "companyName": "B Capital Partners",
+      "clientBrandName": "B Capital Partners",
+      "description": "<p>Model risk and limits oversight.</p>",
+      "positionType": "PERMANENT"
+    }
+  ],
+  "meta": {
+    "currentPage": 1,
+    "pageSize": 200,
+    "pageCount": 2,
+    "totalResults": 400,
+    "includeRemote": false,
+    "excludeLocation": false,
+    "sortBy": "relevance",
+    "searchedLocation": {
+      "name": "Hong Kong",
+      "countryCode2": "HK",
+      "locationPrecision": "Country",
+      "radius": 40
+    },
+    "facetQueryResults": [],
+    "selectedFilters": []
+  },
+  "_links": {
+    "self": {
+      "href": "/v1/efc/jobs/search?q=finance&countryCode2=HK&page=1&pageSize=200&culture=en"
+    },
+    "next": {
+      "href": "/v1/efc/jobs/search?q=finance&countryCode2=HK&page=2&pageSize=200&culture=en"
+    },
+    "last": {
+      "href": "/v1/efc/jobs/search?q=finance&countryCode2=HK&page=2&pageSize=200&culture=en"
+    }
+  }
+}

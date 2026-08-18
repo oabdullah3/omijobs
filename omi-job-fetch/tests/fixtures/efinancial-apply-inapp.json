@@ -1,0 +1,18 @@
+{
+  "data": {
+    "job_id": "Kd9abcXYZ12opQr",
+    "login_required": true,
+    "is_external_job_application": false,
+    "external_job_application_url": null,
+    "questionnaire": [
+      {
+        "id": "resume",
+        "text": "Please upload your CV"
+      }
+    ],
+    "include_ofccp_questions": false,
+    "include_ofccp_veteran_questions": false,
+    "job_application_id": null,
+    "third_party_consent": null
+  }
+}
