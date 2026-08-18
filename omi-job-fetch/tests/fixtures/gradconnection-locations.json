@@ -1,0 +1,38 @@
+[
+  {
+    "slug": "hong-kong",
+    "name": "Hong Kong",
+    "country": { "code": "HK" },
+    "address": "hong-kong,HK",
+    "parent": null,
+    "is_region": false,
+    "count": 17
+  },
+  {
+    "slug": "singapore",
+    "name": "Singapore",
+    "country": { "code": "SG" },
+    "address": "singapore,SG",
+    "parent": null,
+    "is_region": false,
+    "count": 3
+  },
+  {
+    "slug": "beijing",
+    "name": "Beijing",
+    "country": { "code": "CN" },
+    "address": "beijing,china,CN",
+    "parent": { "slug": "china", "country": { "code": "CN" } },
+    "is_region": true,
+    "count": 1
+  },
+  {
+    "slug": "china",
+    "name": "China",
+    "country": { "code": "CN" },
+    "address": "china,CN",
+    "parent": null,
+    "is_region": true,
+    "count": 1
+  }
+]

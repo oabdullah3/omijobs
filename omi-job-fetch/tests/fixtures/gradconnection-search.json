@@ -1,0 +1,93 @@
+[
+  {
+    "campaigns": [
+      {
+        "id": "ba203332-7dac-4f0c-a6dc-67feea884367",
+        "title": "2027 HSBC Hong Kong CIB Summer Internship Programmes",
+        "slug": "hsbc-2027-hsbc-hong-kong-cib-summer-internship-programmes",
+        "interval": { "start": "2026-07-15T00:00:50+00:00", "end": "2099-12-31T12:59:00+00:00" },
+        "description": "Begin your career in Corporate and Institutional Banking.",
+        "is_event": false,
+        "target_mode": "url",
+        "locations": ["Hong Kong"],
+        "job_type": "Internships",
+        "item_type": "keyword_searched_campaign",
+        "origin_target_url": "https://www.hsbc.com/careers/students-and-graduates/find-a-programme?location=hong-kong-sar&page=1&programme-type=graduate-programme",
+        "target_url": "/track-link/55ab35af-19fe-4411-83b4-5bbc8a440f57/"
+      }
+    ],
+    "customer_organization": {
+      "id": "74698e2f-9c71-4ba1-8da4-6e3442c685e4",
+      "name": "HSBC",
+      "slug": "hsbc",
+      "login_to_apply_enabled": true
+    }
+  },
+  {
+    "campaigns": [
+      {
+        "id": "886e18f6-bc57-4bc1-9276-bd27211fcb76",
+        "title": "HSBC Hong Kong Career Information Session",
+        "slug": "hsbc-hsbc-hong-kong-career-information-session-2",
+        "interval": { "start": "2026-08-07T02:11:47+00:00", "end": "2026-08-28T13:59:00+00:00" },
+        "description": "Join us at HSBC's main office for a career info session.",
+        "is_event": true,
+        "target_mode": "url",
+        "locations": ["Hong Kong"],
+        "job_type": "Graduate Jobs",
+        "item_type": "keyword_searched_campaign",
+        "origin_target_url": "https://forms.monday.com/forms/89ed93e19894f73255c0611d2600e98f?r=use1"
+      }
+    ],
+    "customer_organization": {
+      "id": "74698e2f-9c71-4ba1-8da4-6e3442c685e4",
+      "name": "HSBC",
+      "slug": "hsbc",
+      "login_to_apply_enabled": true
+    }
+  },
+  {
+    "campaigns": [
+      {
+        "id": "b7f8a592-1a36-4e35-b1c6-0623743b354a",
+        "title": "Group Fitness Intern (Junior Trainer)",
+        "slug": "hybrid-group-fitness-intern-junior-trainer-74",
+        "interval": { "start": "2026-08-01T00:00:00+00:00", "end": null },
+        "description": "Deliver group fitness classes.",
+        "is_event": false,
+        "target_mode": "quick_apply",
+        "locations": ["Hong Kong"],
+        "job_type": "Internships",
+        "item_type": "keyword_searched_campaign",
+        "origin_target_url": "",
+        "target_email": null
+      }
+    ],
+    "customer_organization": {
+      "id": "cf19a1b2-4d3e-4f0a-8b2c-0623743b354a",
+      "name": "Hybrid",
+      "slug": "hybrid",
+      "login_to_apply_enabled": true
+    }
+  },
+  {
+    "campaigns": [
+      {
+        "id": "ff508233-e6d3-4fa8-8069-02dbb9c19ee9",
+        "slug": "notify-me-dbs-internships",
+        "title": "Notify Me - DBS Internships",
+        "description": "Turn on notifications for DBS's Internships.",
+        "interval": { "start": "2024-10-17T03:39:28.615129+00:00", "end": null },
+        "locations": ["Hong Kong"],
+        "job_type": { "id": "69c485e5-b96f-4730-8891-4ecafcae90da", "name": "Internships", "slug": "internships", "count": null },
+        "item_type": "notify_me"
+      }
+    ],
+    "customer_organization": {
+      "id": "d48b6bf4-2cb2-4b13-9279-404cb46875e8",
+      "name": "DBS",
+      "slug": "dbs",
+      "login_to_apply_enabled": false
+    }
+  }
+]
