@@ -285,4 +285,18 @@ describe("eFinancialCareersAdapter", () => {
       /HTTP 500/,
     );
   });
+
+  it("emits sweep and apply-URL progress via ctx.log", async () => {
+    mockFetch();
+    const logs: string[] = [];
+    await eFinancialCareersAdapter.run({
+      input: { query: "finance" },
+      env: {},
+      config: { ...FAST },
+      log: (s) => logs.push(s),
+    });
+    expect(logs[0]).toBe("page 1/2 · 3 found");
+    expect(logs).toContain("page 2/2 · 3 found");
+    expect(logs[logs.length - 1]).toBe("apply URLs 3/3");
+  });
 });

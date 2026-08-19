@@ -321,16 +321,19 @@ export const gradConnectionAdapter: Adapter = {
         }
       }
       offset += SEARCH_LIMIT;
+      ctx.log?.(`offset ${offset} · ${jobs.length} found`);
     }
     if (capped)
       notes.push(`sweep hit the maxPages cap (${maxPages}); the pool may hold more than ${maxPages * SEARCH_LIMIT} jobs`);
 
     // Enrich each job's description with the full JD from /api/campaigns/<id>/.
+    let jdDone = 0;
     let jdFetched = 0;
     let jdFailed = 0;
     if (jobs.length > 0) {
       await mapLimit(jobs, DETAIL_CONCURRENCY, async (job) => {
         const id = job.external_id;
+        jdDone++;
         if (typeof id !== "string" || !id) return;
         const detail = await fetchCampaignDetail(base, id);
         if (detail.body) {
@@ -339,6 +342,7 @@ export const gradConnectionAdapter: Adapter = {
         } else if (detail.errored) {
           jdFailed++;
         }
+        if (jdDone % 25 === 0 || jdDone === jobs.length) ctx.log?.(`JD ${jdDone}/${jobs.length}`);
       });
     }
     if (jdFailed > 0) notes.push(`${jdFailed} campaign detail fetch(es) failed; search snippet retained for those`);

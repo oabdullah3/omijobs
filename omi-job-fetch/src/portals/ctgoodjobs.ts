@@ -428,6 +428,7 @@ export const ctGoodJobsAdapter: Adapter = {
       for (const card of cards) {
         if (card.id && !seen.has(card.id)) seen.set(card.id, card);
       }
+      ctx.log?.(`page ${pages}/${pageCount} · ${seen.size} found`);
     }
     if (earlyBreak)
       notes.push(`search page ${pages} returned no jobs before the expected ${pageCount} pages; sweep stopped early`);
@@ -452,21 +453,25 @@ export const ctGoodJobsAdapter: Adapter = {
       });
     }
 
+    let jdDone = 0;
     let jdFetched = 0;
     let jdFailed = 0;
     if (jobs.length > 0) {
       await mapLimit(jobs, detailConcurrency, async (job) => {
         const url = job.job_page_url;
+        jdDone++;
         if (typeof url !== "string" || !url) return;
         await sleep(detailDelayMs);
         const detail = await fetchDetail(url, ua, backoff);
         if (detail.errored) {
+          // keep the list fields; location may stay null (runtime drops it, which is honest)
           jdFailed++;
-          return; // keep the list fields; location may stay null (runtime drops it, which is honest)
+        } else {
+          if (detail.description) job.description = detail.description;
+          if (detail.location && !job.location) job.location = detail.location;
+          jdFetched++;
         }
-        if (detail.description) job.description = detail.description;
-        if (detail.location && !job.location) job.location = detail.location;
-        jdFetched++;
+        if (jdDone % 25 === 0 || jdDone === jobs.length) ctx.log?.(`JD ${jdDone}/${jobs.length}`);
       });
     }
     if (jdFailed > 0) notes.push(`${jdFailed} job detail fetch(es) failed; no list description fallback exists (kept null)`);

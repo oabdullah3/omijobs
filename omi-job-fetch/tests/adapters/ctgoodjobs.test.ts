@@ -273,4 +273,18 @@ describe("ctGoodJobsAdapter", () => {
     await ctGoodJobsAdapter.run({ input: { query: "x" }, env: {}, config: { ...FAST } });
     expect(fallback.searchHeaders[0]["user-agent"]).toMatch(/Chrome\/126\.0\.0\.0/);
   });
+
+  it("emits sweep and JD progress via ctx.log", async () => {
+    mockFetch();
+    const logs: string[] = [];
+    await ctGoodJobsAdapter.run({
+      input: { query: "finance" },
+      env: {},
+      config: { ...FAST },
+      log: (s) => logs.push(s),
+    });
+    expect(logs[0]).toBe("page 1/2 · 3 found");
+    expect(logs).toContain("page 2/2 · 3 found");
+    expect(logs[logs.length - 1]).toBe("JD 3/3");
+  });
 });

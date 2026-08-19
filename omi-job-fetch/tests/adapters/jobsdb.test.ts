@@ -206,4 +206,18 @@ describe("jobsDbAdapter", () => {
       jobsDbAdapter.run({ input: { query: "x" }, env: {}, config: { ...FAST } }),
     ).rejects.toThrow();
   });
+
+  it("emits sweep and JD progress via ctx.log", async () => {
+    mockFetch();
+    const logs: string[] = [];
+    await jobsDbAdapter.run({
+      input: { query: "x" },
+      env: {},
+      config: { ...FAST },
+      log: (s) => logs.push(s),
+    });
+    expect(logs[0]).toBe("page 1/10 · 20 found");
+    expect(logs).toContain("page 10/10 · 20 found");
+    expect(logs[logs.length - 1]).toBe("JD 20/20");
+  });
 });

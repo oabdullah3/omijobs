@@ -287,4 +287,18 @@ describe("linkedInAdapter", () => {
     expect(note).toMatch(/seniority filter unsupported/);
     expect(note).toMatch(/page input ignored/);
   });
+
+  it("emits sweep and JD progress via ctx.log", async () => {
+    mockFetch();
+    const logs: string[] = [];
+    await linkedInAdapter.run({
+      input: { query: "tech intern", location: "Hong Kong" },
+      env: {},
+      config: { ...FAST, maxOffset: 20 },
+      log: (s) => logs.push(s),
+    });
+    expect(logs[0]).toMatch(/^offset 0 · \d+ found \(round 1\//);
+    expect(logs.some((l) => l.startsWith("offset 10 "))).toBe(true);
+    expect(logs[logs.length - 1]).toBe("JD 2/2");
+  });
 });

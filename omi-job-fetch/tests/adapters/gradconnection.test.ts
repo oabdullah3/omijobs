@@ -253,4 +253,17 @@ describe("gradConnectionAdapter", () => {
       gradConnectionAdapter.run({ input: { query: "x" }, env: {}, config: { ...FAST } }),
     ).rejects.toThrow(/HTTP 500/);
   });
+
+  it("emits sweep and JD progress via ctx.log", async () => {
+    mockFetch(loadFixture(), loadFixture("gradconnection-locations"));
+    const logs: string[] = [];
+    await gradConnectionAdapter.run({
+      input: { query: "finance intern" },
+      env: {},
+      config: { ...FAST },
+      log: (s) => logs.push(s),
+    });
+    expect(logs[0]).toBe("offset 20 · 2 found");
+    expect(logs[logs.length - 1]).toBe("JD 2/2");
+  });
 });

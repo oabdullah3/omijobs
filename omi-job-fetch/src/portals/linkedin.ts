@@ -344,6 +344,7 @@ export const linkedInAdapter: Adapter = {
         if (served === 0) stillEmpty.push(start);
         servedTotal += served;
         roundAdded += added;
+        ctx.log?.(`offset ${start} · ${seen.size} found (round ${rounds}/${maxRounds})`);
       }
       emptySet = stillEmpty;
       // Saturate: stop once a full round over the remaining offsets adds nothing new.
@@ -368,26 +369,29 @@ export const linkedInAdapter: Adapter = {
       });
     }
 
+    let jdDone = 0;
     let jdFetched = 0;
     let jdFailed = 0;
     if (jobs.length > 0) {
       await mapLimit(jobs, detailConcurrency, async (job) => {
         const id = job.external_id;
+        jdDone++;
         if (typeof id !== "string" || !id) return;
         await sleep(detailDelayMs); // pace: the detail endpoint rate-limits bursts (HTTP 429, 0 bytes)
         const detail = await fetchDetail(id, headers, backoff);
         if (detail.errored) {
           jdFailed++;
-          return;
-        }
-        if (detail.description) {
-          job.description = detail.description;
-          jdFetched++;
         } else {
-          jdFailed++;
+          if (detail.description) {
+            job.description = detail.description;
+            jdFetched++;
+          } else {
+            jdFailed++;
+          }
+          if (detail.employmentType) job.employment_type = detail.employmentType;
+          if (detail.seniority) job.seniority = detail.seniority;
         }
-        if (detail.employmentType) job.employment_type = detail.employmentType;
-        if (detail.seniority) job.seniority = detail.seniority;
+        if (jdDone % 25 === 0 || jdDone === jobs.length) ctx.log?.(`JD ${jdDone}/${jobs.length}`);
       });
     }
     if (jdFailed > 0) notes.push(`${jdFailed} job detail fetch(es) failed; list-only fields retained for those`);

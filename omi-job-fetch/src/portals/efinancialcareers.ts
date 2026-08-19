@@ -353,6 +353,7 @@ export const eFinancialCareersAdapter: Adapter = {
       for (const card of cards) {
         if (card.jobId && !seen.has(card.jobId)) seen.set(card.jobId, card);
       }
+      ctx.log?.(`page ${pages}/${pageCount} · ${seen.size} found`);
     }
     if (earlyBreak)
       notes.push(`search page ${pages} returned no jobs before the expected ${pageCount} pages; sweep stopped early`);
@@ -377,12 +378,14 @@ export const eFinancialCareersAdapter: Adapter = {
       });
     }
 
+    let applyDone = 0;
     let applyFetched = 0;
     let applyFailed = 0;
     if (jobs.length > 0) {
       const cards = [...seen.values()];
       await mapLimit(jobs, detailConcurrency, async (job, i) => {
         const card = cards[i];
+        applyDone++;
         // In-app jobs have no external URL to fetch — the detail page is their entry point.
         if (card.isExternal && card.id) {
           await sleep(detailDelayMs);
@@ -396,6 +399,7 @@ export const eFinancialCareersAdapter: Adapter = {
         // In-app jobs and apply-fetch failures fall back to the detail page so apply_url
         // never drops a valid job.
         if (!job.apply_url) job.apply_url = job.job_page_url;
+        if (applyDone % 25 === 0 || applyDone === jobs.length) ctx.log?.(`apply URLs ${applyDone}/${jobs.length}`);
       });
     }
     if (applyFailed > 0)

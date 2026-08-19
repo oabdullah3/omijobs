@@ -320,6 +320,7 @@ export const jobsDbAdapter: Adapter = {
       for (const card of cards) {
         if (!seen.has(card.id)) seen.set(card.id, card);
       }
+      ctx.log?.(`page ${pages}/${pageCount} · ${seen.size} found`);
     }
     if (earlyBreak)
       notes.push(`search page ${pages} returned no jobs before the expected ${pageCount} pages; sweep stopped early`);
@@ -342,20 +343,24 @@ export const jobsDbAdapter: Adapter = {
       });
     }
 
+    let jdDone = 0;
     let jdFetched = 0;
     let jdFailed = 0;
     if (jobs.length > 0) {
       await mapLimit(jobs, detailConcurrency, async (job) => {
         const id = job.external_id;
+        jdDone++;
         if (typeof id !== "string" || !id) return;
         await sleep(detailDelayMs);
         const detail = await fetchDetail(id, ua, backoff);
         if (detail.errored || !detail.description) {
+          // keep the teaser fallback
           jdFailed++;
-          return; // keep the teaser fallback
+        } else {
+          job.description = detail.description;
+          jdFetched++;
         }
-        job.description = detail.description;
-        jdFetched++;
+        if (jdDone % 25 === 0 || jdDone === jobs.length) ctx.log?.(`JD ${jdDone}/${jobs.length}`);
       });
     }
     if (jdFailed > 0) notes.push(`${jdFailed} job detail fetch(es) failed; search teaser retained for those`);

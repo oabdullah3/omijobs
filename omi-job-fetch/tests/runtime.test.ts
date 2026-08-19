@@ -187,4 +187,60 @@ describe("runPipeline", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("wires onAdapterStart/onAdapterDone/onProgress and passes ctx.log", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
+    try {
+      const events: string[] = [];
+      const progress: string[] = [];
+      const adapter: Adapter = {
+        manifest: {
+          id: "gc",
+          family: "portal",
+          name: "GC",
+          requiredInputs: ["query"],
+          optionalInputs: [],
+          providedOutputs: [],
+        },
+        async run(ctx) {
+          ctx.log?.("page 1/2 · 3 found");
+          ctx.log?.("page 2/2 · 5 found");
+          return { jobs: [], meta: {} };
+        },
+      };
+      await runPipeline(config(["gc"]), { query: "q" }, [adapter], {
+        outputDir: dir,
+        onAdapterStart: (index, total, adapterId) => events.push(`start ${index}/${total} ${adapterId}`),
+        onAdapterDone: (index, total, status) => events.push(`done ${index}/${total} ${status.status} ${status.adapter}`),
+        onProgress: (adapterId, status) => progress.push(`${adapterId}:${status}`),
+      });
+      expect(events).toEqual(["start 1/1 gc", "done 1/1 ok gc"]);
+      expect(progress).toEqual(["gc:page 1/2 · 3 found", "gc:page 2/2 · 5 found"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fires start/done for skipped adapters in order with 1-based index", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
+    try {
+      const events: string[] = [];
+      const missing = makeAdapter("missing", "portal", [], { requiredInputs: ["location"], providedOutputs: [] });
+      const ok = makeAdapter("gc", "portal", [{ title: "T", company: "C", location: "HK", apply_url: "https://a" }]);
+      await runPipeline(config(["missing", "gc"]), { query: "q" }, [missing, ok], {
+        outputDir: dir,
+        onAdapterStart: (index, total, adapterId) => events.push(`start ${index}/${total} ${adapterId}`),
+        onAdapterDone: (index, total, status) => events.push(`done ${index}/${total} ${status.status} ${status.adapter}`),
+      });
+      expect(events).toEqual([
+        "start 1/2 missing",
+        "done 1/2 skipped missing",
+        "start 2/2 gc",
+        "done 2/2 ok gc",
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
 });

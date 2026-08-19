@@ -60,6 +60,11 @@ export interface AdapterContext {
   input: ContractInput;
   env: Record<string, string | undefined>;
   config: Record<string, unknown>;
+  /**
+   * Optional progress sink. Adapters call it with a one-line status at sweep-page
+   * boundaries and enrichment milestones; the CLI renders it as a calm live line.
+   */
+  log?: (status: string) => void;
 }
 
 export interface AdapterResult {
