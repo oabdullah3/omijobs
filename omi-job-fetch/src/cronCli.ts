@@ -194,6 +194,60 @@ async function cmdRemove(argv: string[], cronFile: string): Promise<number> {
   return 0;
 }
 
+/**
+ * Launch the gateway process and return its pid (or null on failure).
+ *
+ * Unix: a plain detached spawn is windowless and survives the shell — this is
+ * the classic daemon pattern.
+ *
+ * Windows: `detached: true` would force a brand-new console window, and a
+ * non-detached child is terminated when this parent process exits — so launch
+ * through wscript with a hidden window (SW_HIDE) instead, which is how Windows
+ * starts a truly background daemon. The gateway self-registers its pidfile, so
+ * we poll briefly for it to report the real pid. Falls back to a detached spawn
+ * (visible window) if wscript is unavailable.
+ */
+async function launchGateway(): Promise<number | null> {
+  if (process.platform !== "win32") {
+    const child = spawn(process.execPath, [CLI_PATH, "cron", "gateway"], {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    const childPid = child.pid ?? null;
+    if (childPid !== null) writeFileSync(PID_FILE, String(childPid));
+    return childPid;
+  }
+  try {
+    const vbsPath = join(STATE_DIR, "start-gateway.vbs");
+    // WScript.Shell.Run(cmd, 0, False): window style 0 = hidden, don't wait.
+    const cmd = `"${process.execPath}" "${CLI_PATH}" cron gateway`;
+    const vbs = `Set sh = CreateObject("WScript.Shell")\r\nsh.Run "${cmd.replace(/"/g, '""')}", 0, False\r\n`;
+    writeFileSync(vbsPath, vbs);
+    const r = spawnSync("wscript.exe", [vbsPath], { stdio: "ignore", windowsHide: true });
+    if (r.error) throw r.error;
+  } catch {
+    // Fall back to a detached spawn — it survives parent exit but shows a
+    // console window on Windows. Better than refusing to start.
+    const child = spawn(process.execPath, [CLI_PATH, "cron", "gateway"], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.unref();
+    const childPid = child.pid ?? null;
+    if (childPid !== null) writeFileSync(PID_FILE, String(childPid));
+    return childPid;
+  }
+  // wscript launched the gateway hidden; it writes its own pidfile on startup.
+  for (let i = 0; i < 25; i++) {
+    const pid = readPid();
+    if (pid !== null) return pid;
+    await sleep(200);
+  }
+  return null;
+}
+
 async function cmdStart(): Promise<number> {
   const pid = readPid();
   if (pid !== null && pidAlive(pid)) {
@@ -204,18 +258,15 @@ async function cmdStart(): Promise<number> {
     rmSync(PID_FILE, { force: true }); // stale pidfile from a crashed gateway
     console.log("[warn] stale pidfile cleared (previous gateway was not running)");
   }
-  // The gateway creates STATE_DIR on startup, but the pidfile is written here
-  // first — make sure the directory exists before writing it.
+  // Make sure STATE_DIR exists before writing the pidfile / VBS launcher into it.
   mkdirSync(STATE_DIR, { recursive: true });
   const autostart = registerAutostart({ node: process.execPath, cliPath: CLI_PATH });
-  const child = spawn(process.execPath, [CLI_PATH, "cron", "gateway"], {
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
-  });
-  child.unref();
-  writeFileSync(PID_FILE, String(child.pid));
-  console.log(`cron gateway started (pid ${child.pid})`);
+  const launchedPid = await launchGateway();
+  if (launchedPid === null) {
+    console.error("Error: failed to launch the cron gateway");
+    return 1;
+  }
+  console.log(`cron gateway started (pid ${launchedPid})`);
   console.log(`  logs:  ${LOG_FILE}`);
   if (autostart.registered) {
     console.log(`  auto-start at login: registered (${autostart.mechanism})`);

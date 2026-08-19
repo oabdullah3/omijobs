@@ -1,0 +1,13 @@
+{
+  "paused": false,
+  "jobs": [
+    {
+      "id": "finance",
+      "config": "test.configs/finance.cron.config.json",
+      "schedule": "every 5 minute",
+      "enabled": true,
+      "lastRun": "2026-08-19T07:31:37.848Z",
+      "lastStatus": "ok"
+    }
+  ]
+}
