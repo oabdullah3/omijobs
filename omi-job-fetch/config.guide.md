@@ -32,7 +32,8 @@ the config file. Every option below is real, pulled from the adapters' manifests
   "ats": { "enabled": [], "config": {} },
   "outputs": { "required": ["apply_url", "title", "company", "location", "source"] },
   "dedup": { "fields": ["title", "company", "location"] },
-  "outputDir": "output"
+  "outputDir": "output",
+  "db": { "enabled": false, "file": "jobs.db", "retentionDays": 30 }
 }
 ```
 
@@ -77,6 +78,40 @@ lists a param the adapter ignores (no-op params like linkedin's `sort` are simpl
   `run.json`). Default `output`.
 - **`ats`** — reserved for per-employer backend adapters. Research is paused: the tool is
   query-driven and aggregators (the portals above) are the search layer, so none are built.
+
+### Aggregate DB (`db`)
+
+An opt-in SQLite store that **grows across runs**: every run also upserts its deduped jobs
+(one row per job) into a single table, keyed by the same `dedup.fields` signature, then
+expires rows older than a retention window. The normal `outputDir` run storage happens
+exactly as before — DB mode is an extra step on top.
+
+| Option | Default | Effect |
+|---|---|---|
+| `enabled` | `false` | Turn DB mode on (`true`). Off by default; nothing is written when off. |
+| `file` | `<outputDir>/jobs.db` | Where the SQLite file lives, resolved relative to `outputDir` (an absolute path is respected). |
+| `retentionDays` | `30` | Rows whose job `posted_at` is older than this many days are deleted after each run. Set `0` to keep everything. |
+
+Rows (table `jobs`):
+
+| Column | Meaning |
+|---|---|
+| `signature` | Content signature of `dedup.fields` (e.g. `title|company|location`, case/whitespace-insensitive) — the primary key, so the DB aggregates across runs. |
+| `posted_at` | The job's post date as ISO-8601, or NULL when the portal didn't provide it (NULL rows are never expired). |
+| `job` | The full normalized job JSON — the same shape written to `jobs.json`. |
+| `status` | Tracking field, default `'unapplied'` for every new row. **Preserved across overwrites** — a later run updating the same signature keeps whatever status/analysis you've set. |
+| `analysis` | Reserved for job analysis, always NULL for now. Preserved across overwrites. |
+| `created_at` / `updated_at` | First-inserted / last-written timestamps. `created_at` survives overwrites. |
+
+Semantics: a later run with the same title+company+location **overwrites** the earlier row
+(new `job`, `posted_at`, `updated_at`; keeps `status`, `analysis`, `created_at`); brand-new
+signatures are appended. After the upsert, the table is scanned and rows with a
+`posted_at` older than `retentionDays` are removed (jobs with no parseable date are kept).
+Each run's `run.json` gains a `db` block — `{ "added", "updated", "removed", "total" }` —
+and a DB failure is a warning, never a run failure.
+
+Backed by Node's built-in `node:sqlite` (zero install, works on any platform) — this is why
+the package requires **Node ≥ 24**.
 
 ### Environment variables
 

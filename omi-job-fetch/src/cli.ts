@@ -202,6 +202,13 @@ async function main(): Promise<void> {
     },
   });
   renderer.boundary(`Wrote ${fmt(summary.jobs)} jobs to ${jobsFile}`);
+  if (summary.db) {
+    const { added, updated, removed, total } = summary.db;
+    renderer.boundary(`[db] +${fmt(added)} new, ${fmt(updated)} updated, ${fmt(removed)} expired, ${fmt(total)} total`);
+  }
+  if (summary.dbError) {
+    renderer.boundary(`[db] sync failed: ${summary.dbError} (run results saved normally)`);
+  }
   // Adapter operational warnings (ignored inputs, caps, failures) — meta.warnings.
   // With multiple queries the same warning repeats per run; print each one once.
   const warned = new Set<string>();

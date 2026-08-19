@@ -1,9 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { requiredOutputs } from "./contract.js";
+import { dbFile, DEFAULT_RETENTION_DAYS, syncDb } from "./db.js";
 import { dedupJobs, linkOf } from "./dedup.js";
 import { normalizeJobWithReason } from "./normalize.js";
-import type { Adapter, AdapterStatus, ContractInput, DedupedCase, DroppedCase, Job, RunConfig, RunSummary } from "./types.js";
+import type { Adapter, AdapterStatus, ContractInput, DbStats, DedupedCase, DroppedCase, Job, RunConfig, RunSummary } from "./types.js";
 
 export const DEFAULT_DEDUP_FIELDS = ["title", "company", "location"];
 
@@ -52,7 +53,8 @@ export async function runPipeline(
   adapters: Adapter[],
   options: RunOptions = {},
 ): Promise<RunResult> {
-  const startedAt = (options.now ?? new Date()).toISOString();
+  const now = options.now ?? new Date();
+  const startedAt = now.toISOString();
   const required = requiredOutputs(config);
   const queries = normalizeQueries(config.global?.queries);
   if (queries.length === 0) {
@@ -177,11 +179,30 @@ export async function runPipeline(
   const duplicatesRemoved = dedupedCases.length;
 
   const outputBase = resolve(options.outputDir ?? config.outputDir ?? "output");
-  const runDir = resolve(outputBase, "runs", timestampId(options.now ?? new Date()));
+  const runDir = resolve(outputBase, "runs", timestampId(now));
   await mkdir(runDir, { recursive: true });
   const jobsFile = resolve(runDir, "jobs.json");
   const runFile = resolve(runDir, "run.json");
   await writeFile(jobsFile, JSON.stringify(deduped, null, 2), "utf8");
+
+  // Aggregate-DB step: on top of the normal run output, upsert the run's
+  // deduped jobs into the DB and expire old rows. Non-fatal — a DB failure
+  // surfaces as a warning but never aborts the run.
+  let db: DbStats | undefined;
+  let dbError: string | undefined;
+  if (config.db?.enabled) {
+    try {
+      db = syncDb(
+        dbFile(config, outputBase),
+        deduped,
+        dedupFields,
+        now,
+        config.db?.retentionDays ?? DEFAULT_RETENTION_DAYS,
+      );
+    } catch (error) {
+      dbError = error instanceof Error ? error.message : String(error);
+    }
+  }
 
   const summary: RunSummary = {
     queries,
@@ -192,6 +213,8 @@ export async function runPipeline(
     duplicatesRemoved,
     droppedCases,
     dedupedCases,
+    ...(db !== undefined ? { db } : {}),
+    ...(dbError !== undefined ? { dbError } : {}),
   };
   await writeFile(runFile, JSON.stringify(summary, null, 2), "utf8");
 

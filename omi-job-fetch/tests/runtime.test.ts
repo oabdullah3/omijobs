@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { DEFAULT_DEDUP_FIELDS, exitCode, normalizeQueries, runPipeline } from "../src/runtime.js";
 import type { Adapter, RunConfig } from "../src/types.js";
 
@@ -329,6 +330,89 @@ describe("runPipeline", () => {
       const adapter = makeAdapter("gc", "portal", []);
       const result = await runPipeline(config(["gc"]), [adapter], { outputDir: dir });
       expect(result.jobsFile.startsWith(dir)).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes aggregate-db stats into run.json when db.enabled", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
+    try {
+      const cfg = config(["gc"]);
+      cfg.db = { enabled: true };
+      const adapter = makeAdapter("gc", "portal", [
+        { title: "Grad Program", company: "HSBC", location: "Hong Kong", apply_url: "https://a", posted_at: "2026-08-18T00:00:00.000Z" },
+      ]);
+      const result = await runPipeline(cfg, [adapter], { outputDir: dir, now: new Date("2026-08-19T00:00:00.000Z") });
+      expect(result.summary.db).toEqual({ added: 1, updated: 0, removed: 0, total: 1 });
+      expect(existsSync(join(dir, "jobs.db"))).toBe(true);
+      const runMeta = JSON.parse(await readFile(result.runFile, "utf8"));
+      expect(runMeta.db).toEqual({ added: 1, updated: 0, removed: 0, total: 1 });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("aggregates across runs: same signature overwrites, new jobs append", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
+    try {
+      const cfg = config(["gc"]);
+      cfg.db = { enabled: true };
+      const now = new Date("2026-08-19T00:00:00.000Z");
+      const first = { title: "Grad Program", company: "HSBC", location: "Hong Kong", apply_url: "https://a", posted_at: "2026-08-18T00:00:00.000Z" };
+      await runPipeline(cfg, [makeAdapter("gc", "portal", [first])], { outputDir: dir, now });
+      // Second run: same title/company/location (new apply_url) + a brand-new job.
+      const second = await runPipeline(
+        cfg,
+        [
+          makeAdapter("gc", "portal", [
+            { title: "Grad Program", company: "HSBC", location: "Hong Kong", apply_url: "https://b", posted_at: "2026-08-18T00:00:00.000Z" },
+            { title: "Analyst", company: "JPM", location: "Hong Kong", apply_url: "https://c", posted_at: "2026-08-18T00:00:00.000Z" },
+          ]),
+        ],
+        { outputDir: dir, now },
+      );
+      expect(second.summary.db).toEqual({ added: 1, updated: 1, removed: 0, total: 2 });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("omits db stats when db is disabled", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
+    try {
+      const adapter = makeAdapter("gc", "portal", [
+        { title: "Grad Program", company: "HSBC", location: "Hong Kong", apply_url: "https://a" },
+      ]);
+      const result = await runPipeline(config(["gc"]), [adapter], { outputDir: dir });
+      expect(result.summary.db).toBeUndefined();
+      expect(result.summary.dbError).toBeUndefined();
+      const runMeta = JSON.parse(await readFile(result.runFile, "utf8"));
+      expect("db" in runMeta).toBe(false);
+      expect("dbError" in runMeta).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("treats a DB sync failure as a non-fatal warning", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
+    try {
+      // Make the DB path uncreatable: a regular file sits where a directory would go.
+      const blocker = join(dir, "blocker");
+      await writeFile(blocker, "i am a file");
+      const cfg = config(["gc"]);
+      cfg.db = { enabled: true, file: resolve(blocker, "sub/jobs.db") };
+      const adapter = makeAdapter("gc", "portal", [
+        { title: "Grad Program", company: "HSBC", location: "Hong Kong", apply_url: "https://a" },
+      ]);
+      const result = await runPipeline(cfg, [adapter], { outputDir: dir });
+      expect(result.summary.dbError).toBeDefined();
+      expect(result.summary.db).toBeUndefined();
+      // The run itself is unaffected.
+      expect(result.summary.adapters[0].status).toBe("ok");
+      expect(result.summary.jobs).toBe(1);
+      expect(result.summary.dbError).not.toBe("");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

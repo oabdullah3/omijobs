@@ -69,6 +69,20 @@ export interface RunConfig {
   dedup: { fields?: string[] };
   /** Where run output lands (default "output"). */
   outputDir?: string;
+  /**
+   * Optional aggregate DB. When `enabled`, every run also upserts its deduped
+   * jobs into a SQLite table (one row per job, keyed by the dedup signature),
+   * then expires rows whose posted_at is older than retentionDays. The normal
+   * output-folder run storage still happens exactly as before.
+   */
+  db?: {
+    /** Opt-in: DB mode only runs when true. Default false. */
+    enabled?: boolean;
+    /** DB file path, resolved relative to outputDir. Default "<outputDir>/jobs.db". */
+    file?: string;
+    /** Expire jobs whose posted_at is older than this many days. Default 30. */
+    retentionDays?: number;
+  };
 }
 
 export interface AdapterStatus {
@@ -101,6 +115,18 @@ export interface DedupedCase {
   keptLink: string | null;
 }
 
+/** Outcome of one run's aggregate-DB sync. */
+export interface DbStats {
+  /** Rows inserted (new signatures). */
+  added: number;
+  /** Existing rows overwritten by this run's fresher copy. */
+  updated: number;
+  /** Rows deleted by retention (posted_at older than retentionDays). */
+  removed: number;
+  /** Rows remaining in the table after the sync. */
+  total: number;
+}
+
 export interface RunSummary {
   /** The query list this run swept (from config.global.queries). */
   queries: string[];
@@ -111,4 +137,8 @@ export interface RunSummary {
   duplicatesRemoved: number;
   droppedCases: DroppedCase[];
   dedupedCases: DedupedCase[];
+  /** Present when db.enabled — the aggregate-DB sync outcome. */
+  db?: DbStats;
+  /** Present when db.enabled but the sync failed (the run still succeeds). */
+  dbError?: string;
 }

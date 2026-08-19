@@ -49,5 +49,6 @@
   "ats": { "enabled": [], "config": {} },
   "outputs": { "required": ["apply_url", "title", "company", "location", "source"] },
   "dedup": { "fields": ["title", "company", "location"] },
-  "outputDir": "output"
+  "outputDir": "output",
+  "db": { "enabled": false, "file": "jobs.db", "retentionDays": 30 }
 }
