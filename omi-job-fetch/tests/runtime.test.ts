@@ -419,6 +419,22 @@ describe("runPipeline", () => {
   });
 });
 
+  it("records the trigger in run.json when options.trigger is set", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
+    try {
+      const adapter = makeAdapter("gc", "portal", [
+        { title: "Grad Program", company: "HSBC", location: "Hong Kong", apply_url: "https://a" },
+      ]);
+      const cronRun = await runPipeline(config(["gc"]), [adapter], { outputDir: dir, trigger: "cron" });
+      expect(cronRun.summary.trigger).toBe("cron");
+      expect(JSON.parse(await readFile(cronRun.runFile, "utf8")).trigger).toBe("cron");
+      const manual = await runPipeline(config(["gc"]), [adapter], { outputDir: dir });
+      expect(manual.summary.trigger).toBeUndefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
 describe("normalizeQueries", () => {
   it("splits a comma-separated string into trimmed distinct queries", () => {
     expect(normalizeQueries("finance, grad program, finance ")).toEqual(["finance", "grad program"]);

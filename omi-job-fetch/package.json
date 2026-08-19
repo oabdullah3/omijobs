@@ -1,9 +1,9 @@
 {
-  "name": "omi-job-fetch",
+  "name": "omijobs",
   "version": "0.1.0",
   "description": "Deterministic programmatic job retrieval from aggregator portals and ATS backends",
   "type": "module",
-  "bin": { "omi-job-fetch": "./dist/cli.js" },
+  "bin": { "omijobs": "./dist/cli.js" },
   "engines": { "node": ">=24" },
   "scripts": {
     "build": "tsc",

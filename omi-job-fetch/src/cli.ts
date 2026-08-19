@@ -2,6 +2,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { runCronCommand } from "./cronCli.js";
 import { adapters } from "./registry.js";
 import { exitCode, normalizeQueries, runPipeline } from "./runtime.js";
 import type { AdapterStatus, DedupedCase, DroppedCase, RunConfig, RunSummary } from "./types.js";
@@ -52,10 +53,18 @@ export function findConfig(explicit?: string): { path: string; config: RunConfig
 }
 
 function printHelp(): void {
-  console.log("Usage: omi-job-fetch [--config <path>]");
-  console.log("  --config <path>  Path to config.json (default: the folder containing package.json)");
-  console.log("  --help           Show this help");
-  console.log("Queries, enabled adapters, and per-adapter search params all live in config.json — see config.guide.md");
+  console.log(`Usage: omijobs <command>
+
+Commands:
+  run [--config <path>]   Run a job sweep now (the default when no command is given)
+  cron ...                Manage the cron gateway and scheduled jobs
+
+Options:
+  --config <path>  Path to config.json (default: the folder containing package.json)
+  --help           Show this help
+
+Queries, enabled adapters, and per-adapter search params all live in config.json — see config.guide.md.
+Cron jobs, schedules, and the gateway: omijobs cron --help`);
 }
 
 /** Compact count formatting for progress lines: 1878 -> "1,878". */
@@ -171,26 +180,33 @@ export function renderTrail(summary: Pick<RunSummary, "droppedCases" | "dedupedC
   return lines;
 }
 
-async function main(): Promise<void> {
+/**
+ * Run a job sweep now — the `run` subcommand (also the default when invoked
+ * with no command). Reads OMI_JOB_FETCH_TRIGGER so a cron-spawned run marks
+ * itself in run.json. Returns the process exit code.
+ */
+async function runCommand(argv: string[]): Promise<number> {
   let parsed: ParsedArgs;
   try {
-    parsed = parseArgs(process.argv.slice(2));
+    parsed = parseArgs(argv);
   } catch (error) {
     console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
     printHelp();
-    process.exit(2);
+    return 2;
   }
   if (parsed.help) {
     printHelp();
-    return;
+    return 0;
   }
 
   const { config } = findConfig(parsed.configPath);
   const queries = normalizeQueries(config.global?.queries);
   const multiQuery = queries.length > 1;
+  const trigger = process.env.OMI_JOB_FETCH_TRIGGER;
 
   const renderer = createRenderer();
   const { jobsFile, summary } = await runPipeline(config, adapters, {
+    ...(trigger ? { trigger } : {}),
     onAdapterStart: (index, total, adapterId, query) => {
       renderer.boundary(`[${index}/${total}] running ${adapterId}${multiQuery ? ` · "${query}"` : ""} …`);
     },
@@ -223,7 +239,21 @@ async function main(): Promise<void> {
   }
   // Manual-review trail: every dropped / deduped case, compacted and grouped by title.
   for (const line of renderTrail(summary)) console.log(line);
-  process.exit(exitCode(summary));
+  return exitCode(summary);
+}
+
+async function main(): Promise<void> {
+  const argv = process.argv.slice(2);
+  let code: number;
+  if (argv[0] === "cron") {
+    code = await runCronCommand(argv.slice(1));
+  } else if (argv[0] === "run") {
+    code = await runCommand(argv.slice(1));
+  } else {
+    // Bare `omijobs [--config …]` behaves as `omijobs run`.
+    code = await runCommand(argv);
+  }
+  process.exit(code);
 }
 
 // Only run when executed directly (e.g. `node dist/cli.js`), not when imported by tests.

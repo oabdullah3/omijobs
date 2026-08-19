@@ -141,4 +141,32 @@ export interface RunSummary {
   db?: DbStats;
   /** Present when db.enabled but the sync failed (the run still succeeds). */
   dbError?: string;
+  /** Who started this run: "cron" when spawned by the cron gateway, else omitted (manual). */
+  trigger?: string;
+}
+
+/** A parsed human-friendly schedule: an interval, or a time-of-day on certain days. */
+export type CronSchedule =
+  | { type: "interval"; minutes: number }
+  | { type: "clock"; hour: number; minute: number; days: number[] | null }; // days: 0=Sun..6=Sat, null = every day
+
+export interface CronJob {
+  id: string;
+  /** Config path passed to `--config` when the job's run is spawned. */
+  config: string;
+  /** Raw human-friendly schedule string as written in cron.json (validated on load). */
+  schedule: string;
+  /** Parsed schedule; persisted for display/tools, recomputed from `schedule` on load. */
+  parsed: CronSchedule;
+  enabled: boolean;
+  /** ISO timestamp of the last spawn, or null if never run. */
+  lastRun: string | null;
+  /** Exit outcome of the last spawn: 0 / error string, or null if never run. */
+  lastStatus: string | null;
+}
+
+export interface CronFile {
+  /** Master switch — `cron pause` / `cron resume`. */
+  paused: boolean;
+  jobs: CronJob[];
 }

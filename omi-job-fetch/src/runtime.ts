@@ -17,6 +17,8 @@ export interface RunResult {
 export interface RunOptions {
   outputDir?: string;
   now?: Date;
+  /** Set to "cron" when the cron gateway spawned this run; recorded in run.json. */
+  trigger?: string;
   /** Called right before each enabled adapter×query run starts (index 1-based, total = queries × enabled). */
   onAdapterStart?: (index: number, total: number, adapterId: string, query?: string) => void;
   /** Called right after each adapter×query run finishes (ok / skipped / error). */
@@ -215,6 +217,7 @@ export async function runPipeline(
     dedupedCases,
     ...(db !== undefined ? { db } : {}),
     ...(dbError !== undefined ? { dbError } : {}),
+    ...(options.trigger ? { trigger: options.trigger } : {}),
   };
   await writeFile(runFile, JSON.stringify(summary, null, 2), "utf8");
 

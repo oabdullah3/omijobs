@@ -1,0 +1,23 @@
+{
+  "paused": false,
+  "jobs": [
+    {
+      "id": "daily-finance",
+      "config": "config.json",
+      "schedule": "daily at 09:00",
+      "enabled": true
+    },
+    {
+      "id": "midday-check",
+      "config": "config.json",
+      "schedule": "every 6 hours",
+      "enabled": true
+    },
+    {
+      "id": "weekday-hunt",
+      "config": "config.json",
+      "schedule": "weekdays at 18:30",
+      "enabled": false
+    }
+  ]
+}

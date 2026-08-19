@@ -1,4 +1,4 @@
-# config.guide — omi-job-fetch configuration reference
+# config.guide — omijobs configuration reference
 
 `config.json` is the single point of control. The CLI takes **one flag**: `--config <path>`
 (defaults to `config.json` in the folder containing `package.json`). Everything else —
@@ -112,6 +112,63 @@ and a DB failure is a warning, never a run failure.
 
 Backed by Node's built-in `node:sqlite` (zero install, works on any platform) — this is why
 the package requires **Node ≥ 24**.
+
+### Scheduled runs (`cron`)
+
+Scheduled runs are managed separately from `config.json` — a small `cron.json` (default: the
+folder containing `package.json`) lists jobs, each pointing at a `config.json` plus a
+human-friendly schedule, and a self-managed background **gateway** spawns them on time.
+
+The gateway is a detached process with OS auto-start at login (Windows HKCU Run key,
+macOS LaunchAgent, Linux systemd user unit), so `omijobs cron start` once is enough — it
+survives logout and reboot. All state lives in `~/.omijobs` (pidfile, stop marker, `cron.log`).
+
+`cron.json`:
+
+```jsonc
+{
+  "paused": false,             // top-level switch: true stops ALL jobs until "cron resume"
+  "jobs": [
+    {
+      "id": "daily-finance",        // unique, slugged from --name or the config filename
+      "config": "config.json",      // resolved relative to the cron.json folder
+      "schedule": "daily at 09:00", // human-friendly grammar, see below
+      "enabled": true,              // per-job on/off
+      "lastRun": null,              // written by the gateway (ISO-8601) — don't edit
+      "lastStatus": null            // "ok" / "exit N" / "error: …" — don't edit
+    }
+  ]
+}
+```
+
+**Schedule grammar** (case-insensitive, UTC clock times):
+
+| Form | Example |
+|---|---|
+| `every <n> min|hour|day|week` | `every 30m`, `every 6 hours`, `every 2 days` |
+| `daily at <HH:MM>` | `daily at 09:00` |
+| `weekdays at <HH:MM>` | `weekdays at 09:00` (Mon–Fri) |
+| `weekends at <HH:MM>` | `weekends at 10:00` (Sat–Sun) |
+| `<day> at <HH:MM>` | `monday at 09:00` (full or 3-letter) |
+| aliases | `hourly`, `daily` (= `daily at 00:00`), `weekly` |
+
+Intervals are due the moment the interval has elapsed since `lastRun` (a job added while the
+gateway is down runs immediately on the next tick — catch-up). Clock jobs wait for their
+slot; a never-run clock job does **not** fire immediately.
+
+The CLI (`omijobs cron`):
+
+| Command | Effect |
+|---|---|
+| `add --config <path> --schedule "<str>" [--name <id>]` | Add a job (validates the schedule + config path). |
+| `list` · `enable <id>` · `disable <id>` · `remove <id>` | Inspect / toggle / delete jobs. |
+| `pause` · `resume` | Pause or resume ALL jobs. |
+| `start` · `stop` · `restart` · `status` | Manage the gateway (start registers OS auto-start, stop removes it). |
+| `run` | Run every enabled job now, ignoring schedules (spawns `node dist/cli.js run`). |
+| `gateway` | Internal: run the gateway loop in the foreground. |
+
+A cron-spawned run marks itself in its `run.json`: the summary gains `"trigger": "cron"`.
+Manual `omijobs run` writes no trigger field.
 
 ### Environment variables
 
