@@ -2,77 +2,60 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { buildInput, resolveContract } from "./contract.js";
 import { adapters } from "./registry.js";
-import { exitCode, runPipeline } from "./runtime.js";
+import { exitCode, normalizeQueries, runPipeline } from "./runtime.js";
 import type { AdapterStatus, DedupedCase, DroppedCase, RunConfig, RunSummary } from "./types.js";
 
 const PACKAGE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Coerce obvious types: "true"/"false" -> boolean, number-like strings -> number. */
-export function coerce(value: unknown): unknown {
-  if (typeof value !== "string") return value;
-  if (value === "true") return true;
-  if (value === "false") return false;
-  if (value !== "" && Number.isFinite(Number(value))) return Number(value);
-  return value;
-}
-
 export interface ParsedArgs {
-  flags: Record<string, unknown>;
   configPath?: string;
   help: boolean;
 }
 
-/** Parse CLI flags: --key value, --key=value. A flag with no value is boolean true. */
+/** Parse CLI flags: the only accepted flag is --config <path> (or --config=<path>). */
 export function parseArgs(argv: string[]): ParsedArgs {
-  const flags: Record<string, unknown> = {};
   let configPath: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (!arg.startsWith("--")) throw new Error(`Unexpected positional argument: ${arg}`);
     const eq = arg.indexOf("=");
     const name = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
-    if (name === "help") return { flags, configPath, help: true };
-    let value: unknown = eq === -1 ? undefined : arg.slice(eq + 1);
-    if (value === undefined) {
-      const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith("--")) {
-        value = next;
-        i++;
-      } else {
-        value = true;
-      }
-    }
+    if (name === "help") return { configPath, help: true };
     if (name === "config") {
-      configPath = String(value);
+      let value: unknown = eq === -1 ? undefined : arg.slice(eq + 1);
+      if (value === undefined) {
+        const next = argv[i + 1];
+        if (next !== undefined && !next.startsWith("--")) {
+          value = next;
+          i++;
+        }
+      }
+      if (typeof value !== "string" || value.trim() === "") {
+        throw new Error("--config requires a file path");
+      }
+      configPath = value;
       continue;
     }
-    flags[name] = coerce(value);
+    throw new Error(`Unknown flag: --${name}`);
   }
-  return { flags, configPath, help: false };
+  return { configPath, help: false };
 }
 
-/** Locate + parse config.json: explicit path, else cwd, else package dir. */
+/** Locate + parse config.json: explicit --config path, else package dir. */
 export function findConfig(explicit?: string): { path: string; config: RunConfig } {
-  const candidates = explicit ? [resolve(explicit)] : [resolve("config.json"), resolve(PACKAGE_DIR, "config.json")];
-  for (const path of candidates) {
-    if (existsSync(path)) {
-      return { path, config: JSON.parse(readFileSync(path, "utf8")) as RunConfig };
-    }
+  const path = explicit ? resolve(explicit) : resolve(PACKAGE_DIR, "config.json");
+  if (!existsSync(path)) {
+    throw new Error(`No config.json at ${path}. Pass --config <path> to point at a different file.`);
   }
-  throw new Error("No config.json found. Pass --config <path> or create config.json in cwd.");
+  return { path, config: JSON.parse(readFileSync(path, "utf8")) as RunConfig };
 }
 
 function printHelp(): void {
-  const contract = resolveContract();
-  console.log("Usage: omi-job-fetch [options]");
-  console.log("Contract input flags:");
-  for (const [key, def] of Object.entries(contract.inputs)) {
-    console.log(`  --${key}  ${def.required ? "(required) " : ""}default: ${JSON.stringify(def.default ?? null)}`);
-  }
-  console.log("  --config <path>  Path to config.json (default: cwd or package dir)");
-  console.log('  Multiple queries: --query "a, b" runs each against all platforms, then dedups across all results');
+  console.log("Usage: omi-job-fetch [--config <path>]");
+  console.log("  --config <path>  Path to config.json (default: the folder containing package.json)");
+  console.log("  --help           Show this help");
+  console.log("Queries, enabled adapters, and per-adapter search params all live in config.json — see config.guide.md");
 }
 
 /** Compact count formatting for progress lines: 1878 -> "1,878". */
@@ -125,20 +108,6 @@ function statusLine(status: AdapterStatus): string {
           ? ` — ${status.error}`
           : "";
   return `${mark} ${status.adapter}${detail}`;
-}
-
-/** Split a comma-separated --query into distinct trimmed queries (drop empties and exact dupes). */
-export function splitQueries(query: unknown): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const raw of String(query ?? "").split(",")) {
-    const q = raw.trim();
-    if (q && !seen.has(q)) {
-      seen.add(q);
-      out.push(q);
-    }
-  }
-  return out;
 }
 
 /** Reduce a job URL to its distinguishing tail (the job-ID segment) for compact display. */
@@ -217,14 +186,11 @@ async function main(): Promise<void> {
   }
 
   const { config } = findConfig(parsed.configPath);
-  const contract = resolveContract(config.contract);
-  const input = buildInput(contract, parsed.flags);
-  const queries = splitQueries(parsed.flags.query);
+  const queries = normalizeQueries(config.global?.queries);
   const multiQuery = queries.length > 1;
 
   const renderer = createRenderer();
-  const { jobsFile, summary } = await runPipeline(config, input, adapters, {
-    queries,
+  const { jobsFile, summary } = await runPipeline(config, adapters, {
     onAdapterStart: (index, total, adapterId, query) => {
       renderer.boundary(`[${index}/${total}] running ${adapterId}${multiQuery ? ` · "${query}"` : ""} …`);
     },

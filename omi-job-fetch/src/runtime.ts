@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { buildInput, requiredOutputs, resolveContract } from "./contract.js";
+import { requiredOutputs } from "./contract.js";
 import { dedupJobs, linkOf } from "./dedup.js";
 import { normalizeJobWithReason } from "./normalize.js";
 import type { Adapter, AdapterStatus, ContractInput, DedupedCase, DroppedCase, Job, RunConfig, RunSummary } from "./types.js";
@@ -16,17 +16,30 @@ export interface RunResult {
 export interface RunOptions {
   outputDir?: string;
   now?: Date;
-  /**
-   * One or more queries to run, each against every enabled adapter. When empty
-   * (or omitted), a single run uses input.query — the original behavior.
-   */
-  queries?: string[];
   /** Called right before each enabled adapter×query run starts (index 1-based, total = queries × enabled). */
   onAdapterStart?: (index: number, total: number, adapterId: string, query?: string) => void;
   /** Called right after each adapter×query run finishes (ok / skipped / error). */
   onAdapterDone?: (index: number, total: number, status: AdapterStatus, query?: string) => void;
   /** Live progress ticks from an adapter's ctx.log() calls. */
   onProgress?: (adapterId: string, status: string) => void;
+}
+
+/**
+ * Normalize config.global.queries: accepts a string[] or a comma-separated
+ * string; trims each entry, drops empties and exact duplicates.
+ */
+export function normalizeQueries(raw: unknown): string[] {
+  const list = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(",") : [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of list) {
+    const q = String(item).trim();
+    if (q && !seen.has(q)) {
+      seen.add(q);
+      out.push(q);
+    }
+  }
+  return out;
 }
 
 /** Deterministic timestamp folder id: 2026-08-17T14-30-00-123Z (no colons/dots). */
@@ -36,19 +49,23 @@ export function timestampId(date: Date): string {
 
 export async function runPipeline(
   config: RunConfig,
-  cliInput: ContractInput,
   adapters: Adapter[],
   options: RunOptions = {},
 ): Promise<RunResult> {
   const startedAt = (options.now ?? new Date()).toISOString();
-  const contract = resolveContract(config.contract);
-  const input = buildInput(contract, cliInput);
-  const required = requiredOutputs(contract);
+  const required = requiredOutputs(config);
+  const queries = normalizeQueries(config.global?.queries);
+  if (queries.length === 0) {
+    throw new Error('No queries configured — set "global.queries" in config.json (e.g. ["finance intern"]).');
+  }
 
   const enabledIds = new Set([...(config.portals.enabled ?? []), ...(config.ats.enabled ?? [])]);
   const selected = adapters.filter((adapter) => enabledIds.has(adapter.manifest.id));
-  const queries = options.queries && options.queries.length > 0 ? options.queries : [String(input.query)];
   const total = selected.length * queries.length;
+
+  // Everything in `global` except the queries list is a pacing/cap knob; it
+  // becomes the base platform config, with each adapter block overriding.
+  const { queries: _queries, ...globalKnobs } = config.global ?? {};
 
   const statuses: AdapterStatus[] = [];
   const rawJobs: ContractInput[] = [];
@@ -60,10 +77,24 @@ export async function runPipeline(
       const adapter = selected[i];
       const index = ++runIndex;
       const familyConfig = adapter.manifest.family === "portal" ? config.portals.config : config.ats.config;
-      const platformConfig = familyConfig?.[adapter.manifest.id] ?? {};
+      const adapterBlock = familyConfig?.[adapter.manifest.id] ?? {};
+
+      // Split the adapter block: keys named by the manifest's input lists are
+      // search params (→ ctx.input); everything else is a knob (→ ctx.config,
+      // overriding the global defaults).
+      const inputKeys = new Set([...adapter.manifest.requiredInputs, ...adapter.manifest.optionalInputs]);
+      const searchParams: ContractInput = {};
+      const adapterKnobs: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(adapterBlock)) {
+        if (inputKeys.has(key)) searchParams[key] = value;
+        else adapterKnobs[key] = value;
+      }
+
+      const adapterInput: ContractInput = { query, ...searchParams };
+      const platformConfig = { ...globalKnobs, ...adapterKnobs };
 
       const missingRequired = adapter.manifest.requiredInputs.filter(
-        (key) => input[key] === undefined || input[key] === null,
+        (key) => adapterInput[key] === undefined || adapterInput[key] === null,
       );
       const unfillable = missingRequired.filter((key) => !(adapter.manifest.fallbacks && key in adapter.manifest.fallbacks));
       if (unfillable.length > 0) {
@@ -79,8 +110,6 @@ export async function runPipeline(
         statuses.push(status);
         continue;
       }
-
-      const adapterInput: ContractInput = { ...input, query };
       for (const key of missingRequired) {
         adapterInput[key] = adapter.manifest.fallbacks![key];
       }
@@ -147,7 +176,7 @@ export async function runPipeline(
   const { kept: deduped, removed: dedupedCases } = dedupJobs(rawJobs, dedupFields);
   const duplicatesRemoved = dedupedCases.length;
 
-  const outputBase = resolve(options.outputDir ?? "output");
+  const outputBase = resolve(options.outputDir ?? config.outputDir ?? "output");
   const runDir = resolve(outputBase, "runs", timestampId(options.now ?? new Date()));
   await mkdir(runDir, { recursive: true });
   const jobsFile = resolve(runDir, "jobs.json");
@@ -155,8 +184,7 @@ export async function runPipeline(
   await writeFile(jobsFile, JSON.stringify(deduped, null, 2), "utf8");
 
   const summary: RunSummary = {
-    contract,
-    input,
+    queries,
     startedAt,
     adapters: statuses,
     jobs: deduped.length,

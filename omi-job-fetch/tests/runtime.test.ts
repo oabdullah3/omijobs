@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_DEDUP_FIELDS, exitCode, runPipeline } from "../src/runtime.js";
+import { DEFAULT_DEDUP_FIELDS, exitCode, normalizeQueries, runPipeline } from "../src/runtime.js";
 import type { Adapter, RunConfig } from "../src/types.js";
 
 function makeAdapter(
@@ -27,8 +27,9 @@ function makeAdapter(
   };
 }
 
-function config(enabled: string[]): RunConfig {
+function config(enabled: string[], queries: string[] = ["q"]): RunConfig {
   return {
+    global: { queries },
     portals: { enabled, config: {} },
     ats: { enabled: [], config: {} },
     dedup: { fields: DEFAULT_DEDUP_FIELDS },
@@ -42,13 +43,13 @@ describe("runPipeline", () => {
       const adapter = makeAdapter("gc", "portal", [
         { title: "Grad Program", company: "HSBC", location: "Hong Kong", apply_url: "https://a" },
       ]);
-      const result = await runPipeline(config(["gc"]), { query: "grad" }, [adapter], { outputDir: dir });
+      const result = await runPipeline(config(["gc"]), [adapter], { outputDir: dir });
       expect(result.summary.adapters[0].status).toBe("ok");
       expect(result.summary.jobs).toBe(1);
       const jobs = JSON.parse(await readFile(result.jobsFile, "utf8"));
       expect(jobs[0].source).toBe("gc");
       const runMeta = JSON.parse(await readFile(result.runFile, "utf8"));
-      expect(runMeta.contract.inputs.query.required).toBe(true);
+      expect(runMeta.queries).toEqual(["q"]);
       expect(exitCode(result.summary)).toBe(0);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -65,7 +66,7 @@ describe("runPipeline", () => {
         },
       };
       const good = makeAdapter("gc", "portal", [{ title: "T", company: "C", location: "HK", apply_url: "https://a" }]);
-      const result = await runPipeline(config(["bad", "gc"]), { query: "q" }, [bad, good], { outputDir: dir });
+      const result = await runPipeline(config(["bad", "gc"]), [bad, good], { outputDir: dir });
       const statuses = result.summary.adapters;
       expect(statuses.find((s) => s.adapter === "bad")!.status).toBe("error");
       expect(statuses.find((s) => s.adapter === "bad")!.error).toContain("boom");
@@ -80,7 +81,7 @@ describe("runPipeline", () => {
     const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
     try {
       const adapter = makeAdapter("gc", "portal", [], { requiredInputs: ["location"], providedOutputs: [] });
-      const result = await runPipeline(config(["gc"]), { query: "q" }, [adapter], { outputDir: dir });
+      const result = await runPipeline(config(["gc"]), [adapter], { outputDir: dir });
       const status = result.summary.adapters[0];
       expect(status.status).toBe("skipped");
       expect(status.reason).toContain("location");
@@ -109,7 +110,7 @@ describe("runPipeline", () => {
           return { jobs: [], meta: {} };
         },
       };
-      await runPipeline(config(["gc"]), { query: "q" }, [adapter], { outputDir: dir });
+      await runPipeline(config(["gc"]), [adapter], { outputDir: dir });
       expect(seen).toEqual(["HK"]);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -121,7 +122,7 @@ describe("runPipeline", () => {
     try {
       const a = makeAdapter("gc", "portal", [{ title: "Grad", company: "HSBC", location: "HK", apply_url: "https://a" }]);
       const b = makeAdapter("jobsdb", "portal", [{ title: "Grad", company: "HSBC", location: "HK", apply_url: "https://b" }]);
-      const result = await runPipeline(config(["gc", "jobsdb"]), { query: "q" }, [a, b], { outputDir: dir });
+      const result = await runPipeline(config(["gc", "jobsdb"]), [a, b], { outputDir: dir });
       expect(result.summary.jobs).toBe(1);
       expect(result.summary.duplicatesRemoved).toBe(1);
       expect(result.summary.dedupedCases).toHaveLength(1);
@@ -145,7 +146,7 @@ describe("runPipeline", () => {
         { title: "T", company: "C", location: "HK", apply_url: "https://a" },
         { title: "NoUrl", company: "C", location: "HK" },
       ]);
-      const result = await runPipeline(config(["gc"]), { query: "q" }, [adapter], { outputDir: dir });
+      const result = await runPipeline(config(["gc"]), [adapter], { outputDir: dir });
       const status = result.summary.adapters[0];
       expect(status.jobCount).toBe(2);
       expect(status.dropped).toBe(1);
@@ -170,7 +171,7 @@ describe("runPipeline", () => {
       const adapter = makeAdapter("gc", "portal", [
         { title: "PageOnly", company: "C", location: "HK", job_page_url: "https://page" },
       ]);
-      const result = await runPipeline(config(["gc"]), { query: "q" }, [adapter], { outputDir: dir });
+      const result = await runPipeline(config(["gc"]), [adapter], { outputDir: dir });
       expect(result.summary.droppedCases[0].link).toBe("https://page");
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -181,7 +182,7 @@ describe("runPipeline", () => {
     const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
     try {
       const adapter = makeAdapter("gc", "portal", []);
-      const result = await runPipeline(config(["gc"]), { query: "q" }, [adapter], { outputDir: dir });
+      const result = await runPipeline(config(["gc"]), [adapter], { outputDir: dir });
       expect(exitCode(result.summary)).toBe(1);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -208,7 +209,7 @@ describe("runPipeline", () => {
           return { jobs: [], meta: {} };
         },
       };
-      await runPipeline(config(["gc"]), { query: "q" }, [adapter], {
+      await runPipeline(config(["gc"]), [adapter], {
         outputDir: dir,
         onAdapterStart: (index, total, adapterId) => events.push(`start ${index}/${total} ${adapterId}`),
         onAdapterDone: (index, total, status) => events.push(`done ${index}/${total} ${status.status} ${status.adapter}`),
@@ -227,7 +228,7 @@ describe("runPipeline", () => {
       const events: string[] = [];
       const missing = makeAdapter("missing", "portal", [], { requiredInputs: ["location"], providedOutputs: [] });
       const ok = makeAdapter("gc", "portal", [{ title: "T", company: "C", location: "HK", apply_url: "https://a" }]);
-      await runPipeline(config(["missing", "gc"]), { query: "q" }, [missing, ok], {
+      await runPipeline(config(["missing", "gc"]), [missing, ok], {
         outputDir: dir,
         onAdapterStart: (index, total, adapterId) => events.push(`start ${index}/${total} ${adapterId}`),
         onAdapterDone: (index, total, status) => events.push(`done ${index}/${total} ${status.status} ${status.adapter}`),
@@ -249,9 +250,8 @@ describe("runPipeline", () => {
       const events: string[] = [];
       const a = makeAdapter("gc", "portal", [{ title: "Grad", company: "HSBC", location: "HK", apply_url: "https://a" }]);
       const b = makeAdapter("jobsdb", "portal", [{ title: "Grad", company: "HSBC", location: "HK", apply_url: "https://b" }]);
-      const result = await runPipeline(config(["gc", "jobsdb"]), { query: "q1, q2" }, [a, b], {
+      const result = await runPipeline(config(["gc", "jobsdb"], ["q1", "q2"]), [a, b], {
         outputDir: dir,
-        queries: ["q1", "q2"],
         onAdapterStart: (index, total, adapterId, query) => events.push(`start ${index}/${total} ${adapterId}@${query}`),
       });
       // 2 queries × 2 adapters = 4 runs, query-outer order, each run tagged with its query.
@@ -273,5 +273,85 @@ describe("runPipeline", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  it("feeds per-adapter search params to ctx.input and merges global knobs with per-adapter overrides", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
+    try {
+      const seen: { input: Record<string, unknown>; config: Record<string, unknown> }[] = [];
+      const adapter: Adapter = {
+        manifest: {
+          id: "gc",
+          family: "portal",
+          name: "GC",
+          requiredInputs: ["query"],
+          optionalInputs: ["location"],
+          providedOutputs: [],
+        },
+        async run(ctx) {
+          seen.push({ input: ctx.input, config: ctx.config });
+          return { jobs: [], meta: {} };
+        },
+      };
+      const cfg: RunConfig = {
+        global: { queries: ["q"], delayMs: 500, retryBackoffMs: [1000, 2000], detailConcurrency: 9 },
+        portals: { enabled: ["gc"], config: { gc: { location: "Hong Kong", delayMs: 700 } } },
+        ats: { enabled: [], config: {} },
+        dedup: { fields: DEFAULT_DEDUP_FIELDS },
+      };
+      await runPipeline(cfg, [adapter], { outputDir: dir });
+      // location is a manifest input key → ctx.input; delayMs overrides the global default;
+      // retryBackoffMs / detailConcurrency flow through from global.
+      expect(seen).toEqual([
+        {
+          input: { query: "q", location: "Hong Kong" },
+          config: { delayMs: 700, retryBackoffMs: [1000, 2000], detailConcurrency: 9 },
+        },
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws when no queries are configured", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
+    try {
+      const adapter = makeAdapter("gc", "portal", []);
+      await expect(runPipeline(config(["gc"], []), [adapter], { outputDir: dir })).rejects.toThrow(/No queries configured/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses config.outputDir when no options.outputDir is given", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
+    try {
+      const adapter = makeAdapter("gc", "portal", []);
+      const result = await runPipeline(config(["gc"]), [adapter], { outputDir: dir });
+      expect(result.jobsFile.startsWith(dir)).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("normalizeQueries", () => {
+  it("splits a comma-separated string into trimmed distinct queries", () => {
+    expect(normalizeQueries("finance, grad program, finance ")).toEqual(["finance", "grad program"]);
+    expect(normalizeQueries("a,b,c")).toEqual(["a", "b", "c"]);
+  });
+
+  it("normalizes a string array", () => {
+    expect(normalizeQueries(["finance", " grad ", "finance"])).toEqual(["finance", "grad"]);
+    expect(normalizeQueries(["a", "b"])).toEqual(["a", "b"]);
+  });
+
+  it("drops empty and blank entries and treats missing / invalid input as empty", () => {
+    expect(normalizeQueries("")).toEqual([]);
+    expect(normalizeQueries(" , , ")).toEqual([]);
+    expect(normalizeQueries("a,,b,")).toEqual(["a", "b"]);
+    expect(normalizeQueries(undefined)).toEqual([]);
+    expect(normalizeQueries([])).toEqual([]);
+    expect(normalizeQueries(42)).toEqual([]); // not an array or comma string → nothing to run
   });
 });

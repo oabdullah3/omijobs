@@ -1,14 +1,4 @@
-/** Contract v0.1 — default input/output keys (see docs/portal-research/plan.md §3). */
-export const INPUT_KEYS = [
-  "query",
-  "location",
-  "posted_within_days",
-  "employment_type",
-  "sort",
-  "page",
-  "seniority",
-] as const;
-
+/** Canonical output keys (see docs/portal-research/plan.md §3). */
 export const OUTPUT_KEYS = [
   "apply_url",
   "job_page_url",
@@ -24,26 +14,13 @@ export const OUTPUT_KEYS = [
   "source",
 ] as const;
 
-export type InputKey = (typeof INPUT_KEYS)[number];
 export type OutputKey = (typeof OUTPUT_KEYS)[number];
 
-/** Contract input after defaults + CLI overrides are applied. */
+/** Search-param record passed to adapters (query, location, …). */
 export type ContractInput = Record<string, unknown>;
 
 /** One job, normalized to contract outputs plus any adapter extras. */
 export type Job = Record<string, unknown>;
-
-/** Field definition in the effective contract. */
-export interface ContractFieldDef {
-  required: boolean;
-  default?: unknown;
-}
-
-/** Effective contract: input field definitions + required outputs. */
-export interface EffectiveContract {
-  inputs: Record<string, ContractFieldDef>;
-  outputs: Record<string, { required: boolean }>;
-}
 
 export interface AdapterManifest {
   id: string;
@@ -78,13 +55,20 @@ export interface Adapter {
 }
 
 export interface RunConfig {
-  contract?: {
-    inputs?: Record<string, ContractFieldDef>;
-    outputs?: Record<string, { required: boolean }>;
-  };
+  /**
+   * Shared defaults: the `queries` list (each run against every enabled adapter)
+   * plus pacing knobs (delayMs, retryBackoffMs, maxPages, detailConcurrency,
+   * detailDelayMs) that are merged into every adapter's config. Per-adapter
+   * config wins where the two overlap.
+   */
+  global?: Record<string, unknown>;
   portals: { enabled: string[]; config?: Record<string, Record<string, unknown>> };
   ats: { enabled: string[]; config?: Record<string, Record<string, unknown>> };
+  /** Required outputs — a job missing one of these is dropped by the normalizer. */
+  outputs?: { required?: string[] };
   dedup: { fields?: string[] };
+  /** Where run output lands (default "output"). */
+  outputDir?: string;
 }
 
 export interface AdapterStatus {
@@ -118,8 +102,8 @@ export interface DedupedCase {
 }
 
 export interface RunSummary {
-  contract: EffectiveContract;
-  input: ContractInput;
+  /** The query list this run swept (from config.global.queries). */
+  queries: string[];
   startedAt: string;
   adapters: AdapterStatus[];
   jobs: number;

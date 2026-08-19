@@ -1,26 +1,53 @@
 {
-  "contract": {
-    "inputs": {
-      "query": { "required": true, "default": null },
-      "location": { "required": false, "default": null },
-      "posted_within_days": { "required": false, "default": null },
-      "employment_type": { "required": false, "default": null },
-      "sort": { "required": false, "default": null },
-      "page": { "required": false, "default": 1 },
-      "seniority": { "required": false, "default": null }
-    },
-    "outputs": {}
+  "global": {
+    "queries": ["finance intern"],
+    "delayMs": 1000,
+    "retryBackoffMs": [4000, 8000, 16000],
+    "maxPages": 100,
+    "detailConcurrency": 4,
+    "detailDelayMs": 0
   },
   "portals": {
     "enabled": ["linkedin", "jobsdb", "gradconnection", "efinancialcareers", "ctgoodjobs"],
     "config": {
-      "gradconnection": {},
-      "linkedin": {},
-      "jobsdb": {},
-      "ctgoodjobs": {},
-      "efinancialcareers":{}
+      "linkedin": {
+        "location": null,
+        "maxRounds": 5,
+        "maxOffset": null,
+        "delayMs": 1500,
+        "detailConcurrency": 2,
+        "detailDelayMs": 1200
+      },
+      "jobsdb": {
+        "location": null,
+        "posted_within_days": null,
+        "employment_type": null,
+        "sort": null,
+        "siteKey": "HK-Main"
+      },
+      "gradconnection": {
+        "location": null,
+        "employment_type": null,
+        "country": "hk"
+      },
+      "efinancialcareers": {
+        "location": null,
+        "posted_within_days": null,
+        "employment_type": null,
+        "seniority": null,
+        "countryCode2": "HK"
+      },
+      "ctgoodjobs": {
+        "posted_within_days": null,
+        "employment_type": null,
+        "seniority": null,
+        "sort": null,
+        "maxPages": 200
+      }
     }
   },
   "ats": { "enabled": [], "config": {} },
-  "dedup": { "fields": ["title", "company", "location"] }
+  "outputs": { "required": ["apply_url", "title", "company", "location", "source"] },
+  "dedup": { "fields": ["title", "company", "location"] },
+  "outputDir": "output"
 }

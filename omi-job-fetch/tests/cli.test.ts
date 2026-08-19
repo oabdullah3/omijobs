@@ -1,34 +1,39 @@
 import { afterEach, describe, it, expect } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { compactLink, createRenderer, findConfig, parseArgs, renderTrail, splitQueries } from "../src/cli.js";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { compactLink, createRenderer, findConfig, parseArgs, renderTrail } from "../src/cli.js";
 
 describe("parseArgs", () => {
-  it("parses --key value flags", () => {
-    const { flags, configPath, help } = parseArgs(["--query", "grad program", "--location", "Hong Kong"]);
-    expect(flags).toEqual({ query: "grad program", location: "Hong Kong" });
-    expect(configPath).toBeUndefined();
+  it("captures --config <path>", () => {
+    const { configPath, help } = parseArgs(["--config", "my/config.json"]);
+    expect(configPath).toBe("my/config.json");
     expect(help).toBe(false);
   });
 
-  it("parses --key=value and coerces numbers", () => {
-    const { flags } = parseArgs(["--query=grad", "--page", "3"]);
-    expect(flags).toEqual({ query: "grad", page: 3 });
-  });
-
-  it("captures --config", () => {
-    const { configPath } = parseArgs(["--config", "my/config.json", "--query", "x"]);
+  it("captures --config=<path>", () => {
+    const { configPath } = parseArgs(["--config=my/config.json"]);
     expect(configPath).toBe("my/config.json");
   });
 
-  it("treats a flag with no value as boolean true", () => {
-    const { flags } = parseArgs(["--sort"]);
-    expect(flags.sort).toBe(true);
+  it("returns help true for --help", () => {
+    expect(parseArgs(["--help"]).help).toBe(true);
+    expect(parseArgs(["--config", "my/config.json", "--help"]).help).toBe(true);
+  });
+
+  it("rejects unknown flags", () => {
+    expect(() => parseArgs(["--query", "grad"])).toThrow(/Unknown flag: --query/);
+    expect(() => parseArgs(["--location=Hong Kong"])).toThrow(/Unknown flag: --location/);
   });
 
   it("rejects positional arguments", () => {
     expect(() => parseArgs(["grad"])).toThrow(/Unexpected positional/);
+  });
+
+  it("rejects --config without a path", () => {
+    expect(() => parseArgs(["--config"])).toThrow(/--config requires a file path/);
+    expect(() => parseArgs(["--config", "--help"])).toThrow(/--config requires a file path/);
   });
 });
 
@@ -40,6 +45,7 @@ describe("findConfig", () => {
       await writeFile(
         path,
         JSON.stringify({
+          global: { queries: ["q"] },
           portals: { enabled: ["gradconnection"], config: {} },
           ats: { enabled: [], config: {} },
           dedup: { fields: ["title"] },
@@ -47,7 +53,22 @@ describe("findConfig", () => {
       );
       const { config } = findConfig(path);
       expect(config.portals.enabled).toEqual(["gradconnection"]);
+      expect(config.global?.queries).toEqual(["q"]);
       expect(config.dedup.fields).toEqual(["title"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("defaults to the config.json next to package.json", () => {
+    const { path } = findConfig();
+    expect(resolve(path)).toBe(resolve(dirname(fileURLToPath(import.meta.url)), "..", "config.json"));
+  });
+
+  it("throws when the explicit path does not exist", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-cfg-"));
+    try {
+      expect(() => findConfig(join(dir, "nope.json"))).toThrow(/No config.json/);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -173,20 +194,5 @@ describe("renderTrail", () => {
 
   it("returns [] when there are no dropped or deduped cases", () => {
     expect(renderTrail({ droppedCases: [], dedupedCases: [] })).toEqual([]);
-  });
-});
-
-describe("splitQueries", () => {
-  it("splits a comma-separated query into trimmed distinct queries", () => {
-    expect(splitQueries("finance, grad program, finance ")).toEqual(["finance", "grad program"]);
-    expect(splitQueries("a,b,c")).toEqual(["a", "b", "c"]);
-  });
-
-  it("drops empty and blank entries and handles missing or non-string input", () => {
-    expect(splitQueries("")).toEqual([]);
-    expect(splitQueries(" , , ")).toEqual([]);
-    expect(splitQueries("a,,b,")).toEqual(["a", "b"]);
-    expect(splitQueries(undefined)).toEqual([]);
-    expect(splitQueries(42)).toEqual(["42"]);
   });
 });
