@@ -243,4 +243,35 @@ describe("runPipeline", () => {
     }
   });
 
+  it("runs each query against each adapter and dedups across all queries", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
+    try {
+      const events: string[] = [];
+      const a = makeAdapter("gc", "portal", [{ title: "Grad", company: "HSBC", location: "HK", apply_url: "https://a" }]);
+      const b = makeAdapter("jobsdb", "portal", [{ title: "Grad", company: "HSBC", location: "HK", apply_url: "https://b" }]);
+      const result = await runPipeline(config(["gc", "jobsdb"]), { query: "q1, q2" }, [a, b], {
+        outputDir: dir,
+        queries: ["q1", "q2"],
+        onAdapterStart: (index, total, adapterId, query) => events.push(`start ${index}/${total} ${adapterId}@${query}`),
+      });
+      // 2 queries × 2 adapters = 4 runs, query-outer order, each run tagged with its query.
+      expect(result.summary.adapters.map((s) => `${s.adapter}@${s.query}`)).toEqual([
+        "gc@q1",
+        "jobsdb@q1",
+        "gc@q2",
+        "jobsdb@q2",
+      ]);
+      // All four jobs are the same listing → deduped to one across queries + platforms.
+      expect(result.summary.jobs).toBe(1);
+      expect(result.summary.duplicatesRemoved).toBe(3);
+      expect(events).toEqual([
+        "start 1/4 gc@q1",
+        "start 2/4 jobsdb@q1",
+        "start 3/4 gc@q2",
+        "start 4/4 jobsdb@q2",
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

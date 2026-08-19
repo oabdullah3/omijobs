@@ -16,10 +16,15 @@ export interface RunResult {
 export interface RunOptions {
   outputDir?: string;
   now?: Date;
-  /** Called right before each enabled adapter run starts (index 1-based, total = enabled adapters). */
-  onAdapterStart?: (index: number, total: number, adapterId: string) => void;
-  /** Called right after each adapter run finishes (ok / skipped / error). */
-  onAdapterDone?: (index: number, total: number, status: AdapterStatus) => void;
+  /**
+   * One or more queries to run, each against every enabled adapter. When empty
+   * (or omitted), a single run uses input.query — the original behavior.
+   */
+  queries?: string[];
+  /** Called right before each enabled adapter×query run starts (index 1-based, total = queries × enabled). */
+  onAdapterStart?: (index: number, total: number, adapterId: string, query?: string) => void;
+  /** Called right after each adapter×query run finishes (ok / skipped / error). */
+  onAdapterDone?: (index: number, total: number, status: AdapterStatus, query?: string) => void;
   /** Live progress ticks from an adapter's ctx.log() calls. */
   onProgress?: (adapterId: string, status: string) => void;
 }
@@ -42,94 +47,100 @@ export async function runPipeline(
 
   const enabledIds = new Set([...(config.portals.enabled ?? []), ...(config.ats.enabled ?? [])]);
   const selected = adapters.filter((adapter) => enabledIds.has(adapter.manifest.id));
-  const total = selected.length;
+  const queries = options.queries && options.queries.length > 0 ? options.queries : [String(input.query)];
+  const total = selected.length * queries.length;
 
   const statuses: AdapterStatus[] = [];
   const rawJobs: ContractInput[] = [];
   const droppedCases: DroppedCase[] = [];
 
   let runIndex = 0;
-  for (let i = 0; i < selected.length; i++) {
-    const adapter = selected[i];
-    const index = ++runIndex;
-    const familyConfig = adapter.manifest.family === "portal" ? config.portals.config : config.ats.config;
-    const platformConfig = familyConfig?.[adapter.manifest.id] ?? {};
+  for (const query of queries) {
+    for (let i = 0; i < selected.length; i++) {
+      const adapter = selected[i];
+      const index = ++runIndex;
+      const familyConfig = adapter.manifest.family === "portal" ? config.portals.config : config.ats.config;
+      const platformConfig = familyConfig?.[adapter.manifest.id] ?? {};
 
-    const missingRequired = adapter.manifest.requiredInputs.filter(
-      (key) => input[key] === undefined || input[key] === null,
-    );
-    const unfillable = missingRequired.filter((key) => !(adapter.manifest.fallbacks && key in adapter.manifest.fallbacks));
-    if (unfillable.length > 0) {
-      const status: AdapterStatus = {
-        adapter: adapter.manifest.id,
-        family: adapter.manifest.family,
-        status: "skipped",
-        reason: `missing required input(s): ${unfillable.join(", ")}`,
-      };
-      options.onAdapterStart?.(index, total, adapter.manifest.id);
-      options.onAdapterDone?.(index, total, status);
-      statuses.push(status);
-      continue;
-    }
-
-    const adapterInput: ContractInput = { ...input };
-    for (const key of missingRequired) {
-      adapterInput[key] = adapter.manifest.fallbacks![key];
-    }
-
-    options.onAdapterStart?.(index, total, adapter.manifest.id);
-    const startedMs = Date.now();
-    let status: AdapterStatus;
-    try {
-      const result = await adapter.run({
-        input: adapterInput,
-        env: process.env,
-        config: platformConfig,
-        log: (status: string) => options.onProgress?.(adapter.manifest.id, status),
-      });
-      const durationMs = Date.now() - startedMs;
-      const jobs: Job[] = [];
-      for (const raw of result.jobs) {
-        const normalized = normalizeJobWithReason(
-          raw,
-          adapter.manifest.id,
-          adapter.manifest.providedOutputs,
-          required,
-        );
-        if ("job" in normalized) {
-          jobs.push(normalized.job);
-        } else {
-          droppedCases.push({
-            adapter: adapter.manifest.id,
-            missing: normalized.missing,
-            title: raw.title ?? null,
-            link: linkOf(raw),
-          });
-        }
+      const missingRequired = adapter.manifest.requiredInputs.filter(
+        (key) => input[key] === undefined || input[key] === null,
+      );
+      const unfillable = missingRequired.filter((key) => !(adapter.manifest.fallbacks && key in adapter.manifest.fallbacks));
+      if (unfillable.length > 0) {
+        const status: AdapterStatus = {
+          adapter: adapter.manifest.id,
+          family: adapter.manifest.family,
+          status: "skipped",
+          query,
+          reason: `missing required input(s): ${unfillable.join(", ")}`,
+        };
+        options.onAdapterStart?.(index, total, adapter.manifest.id, query);
+        options.onAdapterDone?.(index, total, status, query);
+        statuses.push(status);
+        continue;
       }
-      rawJobs.push(...jobs);
-      status = {
-        adapter: adapter.manifest.id,
-        family: adapter.manifest.family,
-        status: "ok",
-        jobCount: result.jobs.length,
-        dropped: result.jobs.length - jobs.length,
-        durationMs,
-        ...(result.meta && Object.keys(result.meta).length > 0 ? { meta: result.meta } : {}),
-      };
-      statuses.push(status);
-    } catch (error) {
-      const durationMs = Date.now() - startedMs;
-      status = {
-        adapter: adapter.manifest.id,
-        family: adapter.manifest.family,
-        status: "error",
-        error: error instanceof Error ? error.message : String(error),
-        durationMs,
-      };
-      statuses.push(status);
+
+      const adapterInput: ContractInput = { ...input, query };
+      for (const key of missingRequired) {
+        adapterInput[key] = adapter.manifest.fallbacks![key];
+      }
+
+      options.onAdapterStart?.(index, total, adapter.manifest.id, query);
+      const startedMs = Date.now();
+      let status: AdapterStatus;
+      try {
+        const result = await adapter.run({
+          input: adapterInput,
+          env: process.env,
+          config: platformConfig,
+          log: (status: string) => options.onProgress?.(adapter.manifest.id, status),
+        });
+        const durationMs = Date.now() - startedMs;
+        const jobs: Job[] = [];
+        for (const raw of result.jobs) {
+          const normalized = normalizeJobWithReason(
+            raw,
+            adapter.manifest.id,
+            adapter.manifest.providedOutputs,
+            required,
+          );
+          if ("job" in normalized) {
+            jobs.push(normalized.job);
+          } else {
+            droppedCases.push({
+              adapter: adapter.manifest.id,
+              missing: normalized.missing,
+              title: raw.title ?? null,
+              link: linkOf(raw),
+            });
+          }
+        }
+        rawJobs.push(...jobs);
+        status = {
+          adapter: adapter.manifest.id,
+          family: adapter.manifest.family,
+          status: "ok",
+          query,
+          jobCount: result.jobs.length,
+          dropped: result.jobs.length - jobs.length,
+          durationMs,
+          ...(result.meta && Object.keys(result.meta).length > 0 ? { meta: result.meta } : {}),
+        };
+        statuses.push(status);
+      } catch (error) {
+        const durationMs = Date.now() - startedMs;
+        status = {
+          adapter: adapter.manifest.id,
+          family: adapter.manifest.family,
+          status: "error",
+          query,
+          error: error instanceof Error ? error.message : String(error),
+          durationMs,
+        };
+        statuses.push(status);
+      }
+      options.onAdapterDone?.(index, total, status, query);
     }
-    options.onAdapterDone?.(index, total, status);
   }
 
   const dedupFields = config.dedup?.fields ?? DEFAULT_DEDUP_FIELDS;

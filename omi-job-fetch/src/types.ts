@@ -91,6 +91,8 @@ export interface AdapterStatus {
   adapter: string;
   family: "portal" | "ats";
   status: "ok" | "skipped" | "error";
+  /** The query this run was for — set when the pipeline runs multiple queries. */
+  query?: string;
   reason?: string;
   jobCount?: number;
   dropped?: number;

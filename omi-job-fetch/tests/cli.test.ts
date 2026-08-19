@@ -2,7 +2,7 @@ import { afterEach, describe, it, expect } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { compactLink, createRenderer, findConfig, parseArgs, renderTrail } from "../src/cli.js";
+import { compactLink, createRenderer, findConfig, parseArgs, renderTrail, splitQueries } from "../src/cli.js";
 
 describe("parseArgs", () => {
   it("parses --key value flags", () => {
@@ -176,3 +176,17 @@ describe("renderTrail", () => {
   });
 });
 
+describe("splitQueries", () => {
+  it("splits a comma-separated query into trimmed distinct queries", () => {
+    expect(splitQueries("finance, grad program, finance ")).toEqual(["finance", "grad program"]);
+    expect(splitQueries("a,b,c")).toEqual(["a", "b", "c"]);
+  });
+
+  it("drops empty and blank entries and handles missing or non-string input", () => {
+    expect(splitQueries("")).toEqual([]);
+    expect(splitQueries(" , , ")).toEqual([]);
+    expect(splitQueries("a,,b,")).toEqual(["a", "b"]);
+    expect(splitQueries(undefined)).toEqual([]);
+    expect(splitQueries(42)).toEqual(["42"]);
+  });
+});

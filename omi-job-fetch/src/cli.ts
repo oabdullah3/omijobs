@@ -72,6 +72,7 @@ function printHelp(): void {
     console.log(`  --${key}  ${def.required ? "(required) " : ""}default: ${JSON.stringify(def.default ?? null)}`);
   }
   console.log("  --config <path>  Path to config.json (default: cwd or package dir)");
+  console.log('  Multiple queries: --query "a, b" runs each against all platforms, then dedups across all results');
 }
 
 /** Compact count formatting for progress lines: 1878 -> "1,878". */
@@ -124,6 +125,20 @@ function statusLine(status: AdapterStatus): string {
           ? ` — ${status.error}`
           : "";
   return `${mark} ${status.adapter}${detail}`;
+}
+
+/** Split a comma-separated --query into distinct trimmed queries (drop empties and exact dupes). */
+export function splitQueries(query: unknown): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of String(query ?? "").split(",")) {
+    const q = raw.trim();
+    if (q && !seen.has(q)) {
+      seen.add(q);
+      out.push(q);
+    }
+  }
+  return out;
 }
 
 /** Reduce a job URL to its distinguishing tail (the job-ID segment) for compact display. */
@@ -204,14 +219,17 @@ async function main(): Promise<void> {
   const { config } = findConfig(parsed.configPath);
   const contract = resolveContract(config.contract);
   const input = buildInput(contract, parsed.flags);
+  const queries = splitQueries(parsed.flags.query);
+  const multiQuery = queries.length > 1;
 
   const renderer = createRenderer();
   const { jobsFile, summary } = await runPipeline(config, input, adapters, {
-    onAdapterStart: (index, total, adapterId) => {
-      renderer.boundary(`[${index}/${total}] running ${adapterId} …`);
+    queries,
+    onAdapterStart: (index, total, adapterId, query) => {
+      renderer.boundary(`[${index}/${total}] running ${adapterId}${multiQuery ? ` · "${query}"` : ""} …`);
     },
-    onAdapterDone: (index, total, status) => {
-      renderer.boundary(`[${index}/${total}]${statusLine(status)}`);
+    onAdapterDone: (index, total, status, query) => {
+      renderer.boundary(`[${index}/${total}]${statusLine(status)}${multiQuery ? ` · "${query}"` : ""}`);
     },
     onProgress: (adapterId, status) => {
       renderer.live(`  ${adapterId} · ${status}`);
@@ -219,10 +237,15 @@ async function main(): Promise<void> {
   });
   renderer.boundary(`Wrote ${fmt(summary.jobs)} jobs to ${jobsFile}`);
   // Adapter operational warnings (ignored inputs, caps, failures) — meta.warnings.
+  // With multiple queries the same warning repeats per run; print each one once.
+  const warned = new Set<string>();
   for (const s of summary.adapters) {
     const warnings = Array.isArray(s.meta?.warnings) ? (s.meta.warnings as unknown[]) : [];
     for (const w of warnings) {
-      if (typeof w === "string" && w.trim()) console.log(`  [warn]  ${s.adapter} — ${w}`);
+      if (typeof w === "string" && w.trim() && !warned.has(`${s.adapter}::${w}`)) {
+        warned.add(`${s.adapter}::${w}`);
+        console.log(`  [warn]  ${s.adapter} — ${w}`);
+      }
     }
   }
   // Manual-review trail: every dropped / deduped case, compacted and grouped by title.
