@@ -418,6 +418,7 @@ export const ctGoodJobsAdapter: Adapter = {
     let pages = 0;
     let earlyBreak = false;
     for (let page = 1; page <= pageCount; page++) {
+      if (ctx.aborted?.()) break; // stop button — keep the partial sweep
       await sleep(delayMs);
       const { cards } = page === 1 ? first : await fetchSearchPage(page);
       pages++;
@@ -430,6 +431,7 @@ export const ctGoodJobsAdapter: Adapter = {
       }
       ctx.log?.(`page ${pages}/${pageCount} · ${seen.size} found`);
     }
+    if (ctx.aborted?.()) notes.push("sweep stopped early (run aborted)");
     if (earlyBreak)
       notes.push(`search page ${pages} returned no jobs before the expected ${pageCount} pages; sweep stopped early`);
     if (pages >= maxPages)
@@ -461,6 +463,7 @@ export const ctGoodJobsAdapter: Adapter = {
         const url = job.job_page_url;
         jdDone++;
         if (typeof url !== "string" || !url) return;
+        if (ctx.aborted?.()) return; // stop button — keep the list fields
         await sleep(detailDelayMs);
         const detail = await fetchDetail(url, ua, backoff);
         if (detail.errored) {

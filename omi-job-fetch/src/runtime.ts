@@ -25,6 +25,14 @@ export interface RunOptions {
   onAdapterDone?: (index: number, total: number, status: AdapterStatus, query?: string) => void;
   /** Live progress ticks from an adapter's ctx.log() calls. */
   onProgress?: (adapterId: string, status: string) => void;
+  /**
+   * Abort signal (e.g. stop button). Polled between adapter×query runs; also
+   * threaded into each adapter's ctx so its sweep/enrichment loops can stop
+   * early. On abort the pipeline stops launching adapters and finalizes with
+   * whatever partial results were collected (jobs.json, run.json with
+   * `stopped: true`, and the DB sync).
+   */
+  aborted?: () => boolean;
 }
 
 /**
@@ -76,8 +84,15 @@ export async function runPipeline(
   const droppedCases: DroppedCase[] = [];
 
   let runIndex = 0;
-  for (const query of queries) {
+  let stopped = false;
+  outer: for (const query of queries) {
     for (let i = 0; i < selected.length; i++) {
+      // Abort between adapter runs: stop launching new adapters; finalize with
+      // whatever partial results were collected.
+      if (options.aborted?.()) {
+        stopped = true;
+        break outer;
+      }
       const adapter = selected[i];
       const index = ++runIndex;
       const familyConfig = adapter.manifest.family === "portal" ? config.portals.config : config.ats.config;
@@ -127,6 +142,7 @@ export async function runPipeline(
           env: process.env,
           config: platformConfig,
           log: (status: string) => options.onProgress?.(adapter.manifest.id, status),
+          aborted: options.aborted,
         });
         const durationMs = Date.now() - startedMs;
         const jobs: Job[] = [];
@@ -192,7 +208,7 @@ export async function runPipeline(
   // surfaces as a warning but never aborts the run.
   let db: DbStats | undefined;
   let dbError: string | undefined;
-  if (config.db?.enabled) {
+  if (config.db?.enabled !== false) {
     try {
       db = syncDb(
         dbFile(config, outputBase),
@@ -218,6 +234,7 @@ export async function runPipeline(
     ...(db !== undefined ? { db } : {}),
     ...(dbError !== undefined ? { dbError } : {}),
     ...(options.trigger ? { trigger: options.trigger } : {}),
+    ...(stopped ? { stopped: true } : {}),
   };
   await writeFile(runFile, JSON.stringify(summary, null, 2), "utf8");
 

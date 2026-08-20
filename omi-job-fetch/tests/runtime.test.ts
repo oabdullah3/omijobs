@@ -190,6 +190,36 @@ describe("runPipeline", () => {
     }
   });
 
+  it("aborts between adapters when options.aborted() flips, finalizing partial results with stopped:true", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
+    try {
+      const a = makeAdapter("a", "portal", [{ title: "A", company: "Acme", apply_url: "https://a.com/1", location: "HK" }]);
+      const b = makeAdapter("b", "portal", [{ title: "B", company: "Acme", apply_url: "https://b.com/2", location: "HK" }]);
+      let aborted = false;
+      let done = 0;
+      const result = await runPipeline(config(["a", "b"]), [a, b], {
+        outputDir: dir,
+        // Flip the abort flag right after the first adapter finishes — the next
+        // loop iteration must stop launching adapters.
+        onAdapterDone: () => {
+          done++;
+          if (done === 1) aborted = true;
+        },
+        aborted: () => aborted,
+      });
+      expect(result.summary.stopped).toBe(true);
+      // Only the first adapter ran.
+      expect(result.summary.adapters.map((s) => s.adapter)).toEqual(["a"]);
+      // Partial results were still written to jobs.json / run.json.
+      const jobs = JSON.parse(await readFile(result.jobsFile, "utf8"));
+      expect(jobs.length).toBe(1);
+      const runMeta = JSON.parse(await readFile(result.runFile, "utf8"));
+      expect(runMeta.stopped).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("wires onAdapterStart/onAdapterDone/onProgress and passes ctx.log", async () => {
     const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
     try {
@@ -381,15 +411,32 @@ describe("runPipeline", () => {
   it("omits db stats when db is disabled", async () => {
     const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
     try {
+      const cfg = config(["gc"]);
+      cfg.db = { enabled: false }; // explicit opt-out
       const adapter = makeAdapter("gc", "portal", [
         { title: "Grad Program", company: "HSBC", location: "Hong Kong", apply_url: "https://a" },
       ]);
-      const result = await runPipeline(config(["gc"]), [adapter], { outputDir: dir });
+      const result = await runPipeline(cfg, [adapter], { outputDir: dir });
       expect(result.summary.db).toBeUndefined();
       expect(result.summary.dbError).toBeUndefined();
       const runMeta = JSON.parse(await readFile(result.runFile, "utf8"));
       expect("db" in runMeta).toBe(false);
       expect("dbError" in runMeta).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("syncs the aggregate DB by default when db.enabled is omitted", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-"));
+    try {
+      const cfg = config(["gc"]); // no db block at all — default must be ON
+      const adapter = makeAdapter("gc", "portal", [
+        { title: "Grad Program", company: "HSBC", location: "Hong Kong", apply_url: "https://a", posted_at: "2026-08-18T00:00:00.000Z" },
+      ]);
+      const result = await runPipeline(cfg, [adapter], { outputDir: dir, now: new Date("2026-08-19T00:00:00.000Z") });
+      expect(result.summary.db).toEqual({ added: 1, updated: 0, removed: 0, total: 1 });
+      expect(existsSync(join(dir, "jobs.db"))).toBe(true);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

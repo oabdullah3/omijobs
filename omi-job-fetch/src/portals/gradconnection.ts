@@ -278,6 +278,7 @@ export const gradConnectionAdapter: Adapter = {
     };
 
     while (pages < maxPages) {
+      if (ctx.aborted?.()) break; // stop button — keep the partial sweep
       await sleep(delayMs);
       const groups = await fetchPage(`${baseUrl}&offset=${offset}`);
       pages++;
@@ -323,6 +324,7 @@ export const gradConnectionAdapter: Adapter = {
       offset += SEARCH_LIMIT;
       ctx.log?.(`offset ${offset} · ${jobs.length} found`);
     }
+    if (ctx.aborted?.()) notes.push("sweep stopped early (run aborted)");
     if (capped)
       notes.push(`sweep hit the maxPages cap (${maxPages}); the pool may hold more than ${maxPages * SEARCH_LIMIT} jobs`);
 
@@ -335,6 +337,7 @@ export const gradConnectionAdapter: Adapter = {
         const id = job.external_id;
         jdDone++;
         if (typeof id !== "string" || !id) return;
+        if (ctx.aborted?.()) return; // stop button — keep the search snippet
         const detail = await fetchCampaignDetail(base, id);
         if (detail.body) {
           job.description = detail.body;

@@ -310,6 +310,7 @@ export const jobsDbAdapter: Adapter = {
     let pages = 0;
     let earlyBreak = false;
     for (let page = 1; page <= pageCount; page++) {
+      if (ctx.aborted?.()) break; // stop button — keep the partial sweep
       await sleep(delayMs);
       const { cards } = page === 1 ? first : await fetchSearchPage(page);
       pages++;
@@ -322,6 +323,7 @@ export const jobsDbAdapter: Adapter = {
       }
       ctx.log?.(`page ${pages}/${pageCount} · ${seen.size} found`);
     }
+    if (ctx.aborted?.()) notes.push("sweep stopped early (run aborted)");
     if (earlyBreak)
       notes.push(`search page ${pages} returned no jobs before the expected ${pageCount} pages; sweep stopped early`);
     if (pages >= maxPages)
@@ -351,6 +353,7 @@ export const jobsDbAdapter: Adapter = {
         const id = job.external_id;
         jdDone++;
         if (typeof id !== "string" || !id) return;
+        if (ctx.aborted?.()) return; // stop button — keep the teaser fallback
         await sleep(detailDelayMs);
         const detail = await fetchDetail(id, ua, backoff);
         if (detail.errored || !detail.description) {

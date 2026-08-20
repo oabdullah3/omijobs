@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -33,6 +35,25 @@ function row(db: DatabaseSync, sig: string): Record<string, unknown> | undefined
 async function tempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "jobfetch-db-"));
 }
+
+// A second, real node process that holds the write lock on the shared DB for a
+// fixed time, then commits. The test's own thread runs the real syncDb against
+// that lock in the meantime — the exact "two runs finish together" race, with
+// our actual syncDb (and its busy_timeout) under test. The holder sets no
+// busy_timeout of its own: any waiting can only come from syncDb.
+const CHILD_HOLDER = `
+  const { DatabaseSync } = require('node:sqlite');
+  const file = process.argv[1];
+  const db = new DatabaseSync(file);
+  db.exec('BEGIN IMMEDIATE');
+  db.exec("INSERT INTO jobs (signature, posted_at, job, status, analysis, created_at, updated_at) VALUES ('holder', NULL, '{}', 'unapplied', NULL, 't', 't')");
+  process.stdout.write('locked\\n');
+  setTimeout(() => {
+    db.exec('COMMIT');
+    db.close();
+    process.exit(0);
+  }, 2000);
+`;
 
 describe("syncDb", () => {
   it("inserts new rows with status 'unapplied' and analysis NULL", async () => {
@@ -166,6 +187,64 @@ describe("syncDb", () => {
       const file = join(dir, "jobs.db");
       const stats = syncDb(file, [job({ title: "", company: "", location: "" })], FIELDS, NOW, 30);
       expect(stats).toEqual({ added: 0, updated: 0, removed: 0, total: 0 });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("syncDb — concurrent writers", () => {
+  it("waits for the other writer's transaction instead of failing with database is locked", async () => {
+    const dir = await tempDir();
+    try {
+      const file = join(dir, "jobs.db");
+      const prep = new DatabaseSync(file);
+      prep.exec(`CREATE TABLE IF NOT EXISTS jobs (
+        signature  TEXT PRIMARY KEY,
+        posted_at  TEXT,
+        job        TEXT NOT NULL,
+        status     TEXT NOT NULL DEFAULT 'unapplied',
+        analysis   TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`);
+      prep.close();
+      const holder = spawn(process.execPath, ["-e", CHILD_HOLDER, file], { stdio: ["ignore", "pipe", "pipe"] });
+      const holderExit = new Promise<number | null>((resolve) => holder.on("close", resolve));
+      let holderErr = "";
+      holder.stderr.on("data", (d) => (holderErr += d));
+      try {
+        await Promise.race([
+          once(holder.stdout, "data"), // "locked" — the child holds the write lock
+          holderExit.then((code) => {
+            throw new Error(`holder exited with ${code} before locking`);
+          }),
+        ]);
+        const started = Date.now();
+        // Blocks inside SQLite until the holder commits (busy_timeout). Without the
+        // PRAGMA this throws SQLITE_BUSY after ~0ms and the test fails.
+        const stats = syncDb(file, [job()], FIELDS, NOW, 30);
+        const waitedMs = Date.now() - started;
+        expect(holderErr).toBe("");
+        expect(waitedMs).toBeGreaterThanOrEqual(1000); // genuinely waited on the lock
+        expect(stats).toEqual({ added: 1, updated: 0, removed: 0, total: 2 });
+        expect(await holderExit).toBe(0);
+        // No data lost: the holder's row and syncDb's job both landed.
+        const db = new DatabaseSync(file);
+        try {
+          const n = Number(db.prepare("SELECT COUNT(*) AS n FROM jobs").get()?.n ?? 0);
+          expect(n).toBe(2);
+        } finally {
+          db.close();
+        }
+      } finally {
+        // Reap the holder even if an assertion above failed mid-flight: its open
+        // -journal file would otherwise block the temp-dir delete below with EBUSY.
+        if (holder.exitCode === null) {
+          holder.kill();
+          await holderExit.catch(() => {});
+        }
+      }
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

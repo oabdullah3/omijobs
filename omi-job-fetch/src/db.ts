@@ -50,6 +50,12 @@ export function syncDb(
   mkdirSync(dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   try {
+    // Concurrent runs may finish together and both write the same jobs.db. Wait
+    // (up to 5s) for the other writer's transaction to COMMIT instead of failing
+    // immediately with "database is locked" and silently dropping this run's jobs
+    // from the dashboard. Mirrors the busy_timeout the read path already sets
+    // (dashboardDb.ts). Writes are short, so 5s is a generous bound.
+    db.exec("PRAGMA busy_timeout = 5000");
     db.exec(`
       CREATE TABLE IF NOT EXISTS jobs (
         signature  TEXT PRIMARY KEY,

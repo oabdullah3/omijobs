@@ -42,6 +42,13 @@ export interface AdapterContext {
    * boundaries and enrichment milestones; the CLI renders it as a calm live line.
    */
   log?: (status: string) => void;
+  /**
+   * Optional abort signal. Adapters poll it inside their sweep and enrichment
+   * loops and stop early, returning whatever partial results they collected.
+   * Set when the run is stopped from the dashboard (stop button) — the results
+   * fetched so far are still written to the DB and the output.
+   */
+  aborted?: () => boolean;
 }
 
 export interface AdapterResult {
@@ -70,13 +77,12 @@ export interface RunConfig {
   /** Where run output lands (default "output"). */
   outputDir?: string;
   /**
-   * Optional aggregate DB. When `enabled`, every run also upserts its deduped
-   * jobs into a SQLite table (one row per job, keyed by the dedup signature),
-   * then expires rows whose posted_at is older than retentionDays. The normal
-   * output-folder run storage still happens exactly as before.
+   * db — optional aggregate database. Enabled by DEFAULT for every config
+   * (`enabled !== false`); the dashboard relies on it. Set `enabled: false`
+   * to opt out of DB writes for a config.
    */
   db?: {
-    /** Opt-in: DB mode only runs when true. Default false. */
+    /** Enabled by default (`!== false`); set false to opt out. */
     enabled?: boolean;
     /** DB file path, resolved relative to outputDir. Default "<outputDir>/jobs.db". */
     file?: string;
@@ -143,6 +149,8 @@ export interface RunSummary {
   dbError?: string;
   /** Who started this run: "cron" when spawned by the cron gateway, else omitted (manual). */
   trigger?: string;
+  /** True when the run was stopped early (stop button) and only partial results were written. */
+  stopped?: boolean;
 }
 
 /** A parsed human-friendly schedule: an interval, or a time-of-day on certain days. */

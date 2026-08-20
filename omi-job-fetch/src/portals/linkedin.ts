@@ -339,6 +339,7 @@ export const linkedInAdapter: Adapter = {
       roundAdded = 0;
       const stillEmpty: number[] = [];
       for (const start of emptySet) {
+        if (ctx.aborted?.()) break; // stop button — keep the partial sweep
         await sleep(delayMs);
         const { served, added } = await fetchOffset(start);
         if (served === 0) stillEmpty.push(start);
@@ -347,12 +348,14 @@ export const linkedInAdapter: Adapter = {
         ctx.log?.(`offset ${start} · ${seen.size} found (round ${rounds}/${maxRounds})`);
       }
       emptySet = stillEmpty;
+      if (ctx.aborted?.()) break;
       // Saturate: stop once a full round over the remaining offsets adds nothing new.
       // Round 1 alone is never enough (rotation), hence the min-2-rounds floor.
       if (roundAdded === 0 && rounds >= 2) break;
       // Hard-block guard: zero cards served anywhere and nothing seen yet.
       if (servedTotal === 0 && seen.size === 0) break;
     }
+    if (ctx.aborted?.()) notes.push("sweep stopped early (run aborted)");
 
     const jobs: Job[] = [];
     for (const card of seen.values()) {
@@ -377,6 +380,7 @@ export const linkedInAdapter: Adapter = {
         const id = job.external_id;
         jdDone++;
         if (typeof id !== "string" || !id) return;
+        if (ctx.aborted?.()) return; // stop button — keep list-only fields
         await sleep(detailDelayMs); // pace: the detail endpoint rate-limits bursts (HTTP 429, 0 bytes)
         const detail = await fetchDetail(id, headers, backoff);
         if (detail.errored) {

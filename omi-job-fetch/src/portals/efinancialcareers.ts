@@ -377,6 +377,7 @@ export const eFinancialCareersAdapter: Adapter = {
     let pages = 0;
     let earlyBreak = false;
     for (let page = 1; page <= pageCount; page++) {
+      if (ctx.aborted?.()) break; // stop button — keep the partial sweep
       await sleep(delayMs);
       const { cards } = page === 1 ? first : await fetchSearchPage(page);
       pages++;
@@ -389,6 +390,7 @@ export const eFinancialCareersAdapter: Adapter = {
       }
       ctx.log?.(`page ${pages}/${pageCount} · ${seen.size} found`);
     }
+    if (ctx.aborted?.()) notes.push("sweep stopped early (run aborted)");
     if (earlyBreak)
       notes.push(`search page ${pages} returned no jobs before the expected ${pageCount} pages; sweep stopped early`);
     if (pages >= maxPages)
@@ -420,8 +422,8 @@ export const eFinancialCareersAdapter: Adapter = {
       await mapLimit(jobs, detailConcurrency, async (job, i) => {
         const card = cards[i];
         applyDone++;
-        // In-app jobs have no external URL to fetch — the detail page is their entry point.
-        if (card.isExternal && card.id) {
+        // Stop button: skip the fetch work (fallback below still fills apply_url).
+        if (!ctx.aborted?.() && card.isExternal && card.id) {
           await sleep(detailDelayMs);
           const apply = await fetchApply(card.id, ua, backoff);
           if (apply.errored) applyFailed++;
