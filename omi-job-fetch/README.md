@@ -19,8 +19,8 @@ config reference is [config.guide.md](config.guide.md).
 **1. Set your search terms.** Copy the starter config and edit the queries:
 
 ```bash
-cp config.example.json config.json
-# then edit config.json → "global": { "queries": ["finance intern"] }
+cp config.example.json dashboard.configs/realtime/config.json
+# then edit dashboard.configs/realtime/config.json → "global": { "queries": ["finance intern"] }
 ```
 
 The query list is the whole search: each query runs against every enabled portal, and
@@ -55,7 +55,7 @@ reported in the manual-review trail. No credentials are needed to read these sit
 **Scheduled** — `omijobs cron` runs the same sweeps on a timer, from the same CLI:
 
 ```bash
-omijobs cron add --config config.json --schedule "every 6 hours"
+omijobs cron add --config dashboard.configs/realtime/config.json --schedule "every 6 hours"
 omijobs cron start        # background gateway + auto-start at login — survives reboots
 omijobs cron status       # gateway state, autostart state, last log lines, jobs
 omijobs cron list         # jobs + last run status

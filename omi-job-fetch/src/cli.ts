@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runCronCommand } from "./cronCli.js";
+import { BASE_CONFIG_REL } from "./dashboardConfig.js";
+import { startDashboard } from "./dashboardServer.js";
 import { adapters } from "./registry.js";
 import { exitCode, normalizeQueries, runPipeline } from "./runtime.js";
 import type { AdapterStatus, DedupedCase, DroppedCase, RunConfig, RunSummary } from "./types.js";
@@ -43,9 +45,48 @@ export function parseArgs(argv: string[]): ParsedArgs {
   return { configPath, help: false };
 }
 
-/** Locate + parse config.json: explicit --config path, else package dir. */
+export function parseDashboardFlags(argv: string[]): { port?: number; error?: string } {
+  let port: number | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--port") {
+      const raw = argv[++i];
+      if (raw === undefined) return { error: "--port requires a number" };
+      port = Number(raw);
+    } else if (a.startsWith("--port=")) {
+      port = Number(a.slice(7));
+    } else {
+      return { error: `Unknown dashboard flag: ${a}` };
+    }
+  }
+  if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+    return { error: "--port must be an integer in 1–65535" };
+  }
+  return { port };
+}
+
+async function runDashboardCommand(argv: string[]): Promise<number> {
+  const { port, error } = parseDashboardFlags(argv);
+  if (error) {
+    console.error(`Error: ${error}`);
+    console.log("Usage: omijobs dashboard [--port <number>]");
+    return 2;
+  }
+  try {
+    const { url } = await startDashboard({ port });
+    console.log(`omijobs dashboard: ${url}`);
+    console.log("Press Ctrl+C to stop.");
+    await new Promise(() => {}); // keep running until the user presses Ctrl+C
+    return 0;
+  } catch (error) {
+    console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
+}
+
+/** Locate + parse config.json: explicit --config path, else the fixed realtime config. */
 export function findConfig(explicit?: string): { path: string; config: RunConfig } {
-  const path = explicit ? resolve(explicit) : resolve(PACKAGE_DIR, "config.json");
+  const path = explicit ? resolve(explicit) : resolve(PACKAGE_DIR, ...BASE_CONFIG_REL.split("/"));
   if (!existsSync(path)) {
     throw new Error(`No config.json at ${path}. Pass --config <path> to point at a different file.`);
   }
@@ -58,12 +99,13 @@ function printHelp(): void {
 Commands:
   run [--config <path>]   Run a job sweep now (the default when no command is given)
   cron ...                Manage the cron gateway and scheduled jobs
+  dashboard [--port N]    Open the web dashboard (default port 5211)
 
 Options:
-  --config <path>  Path to config.json (default: the folder containing package.json)
+  --config <path>  Path to config.json (default: dashboard.configs/realtime/config.json)
   --help           Show this help
 
-Queries, enabled adapters, and per-adapter search params all live in config.json — see config.guide.md.
+Queries, enabled adapters, and per-adapter search params all live in dashboard.configs/realtime/config.json — see config.guide.md.
 Cron jobs, schedules, and the gateway: omijobs cron --help`);
 }
 
@@ -101,6 +143,104 @@ export function createRenderer(): {
       if (liveLen > 0) process.stdout.write(`\r${" ".repeat(liveLen)}\r`);
       process.stdout.write(text);
       liveLen = text.length;
+    },
+  };
+}
+
+/**
+ * Optional file-side channel mirroring the run's console lines into
+ * OMI_JOB_FETCH_PROGRESS_FILE when set. Purely additive — stdout/stderr are
+ * untouched (the dashboard spawns runs with piped stdout, so it can't read the
+ * live line any other way). The file is truncated at run start and persists
+ * after, so the dashboard tails it while the run is live and reads the final
+ * `result:` line once it completes.
+ */
+export function createProgressFile(): { line: (text: string) => void; result: (text: string) => void } {
+  const file = process.env.OMI_JOB_FETCH_PROGRESS_FILE;
+  if (!file) return { line: () => {}, result: () => {} };
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, "", "utf8"); // truncate per run
+  } catch {
+    return { line: () => {}, result: () => {} }; // never fatal — best effort only
+  }
+  return {
+    line(text: string) {
+      try {
+        appendFileSync(file, `${text}\n`, "utf8");
+      } catch {
+        /* best effort */
+      }
+    },
+    result(text: string) {
+      try {
+        appendFileSync(file, `result: ${text}\n`, "utf8");
+      } catch {
+        /* best effort */
+      }
+    },
+  };
+}
+
+/**
+ * Optional running-marker file: writes `{ pid, startedAt }` to
+ * OMI_JOB_FETCH_RUN_MARKER when set, and returns a `clear()` that deletes it.
+ * The CLI owns this file — it writes its PID at run start and clears it on exit
+ * (finally), so a restarted dashboard can tell the run is still in flight even
+ * if every parent process is gone. Purely additive like the progress file.
+ */
+export function createRunMarker(): { pid: number | null; clear: () => void } {
+  const file = process.env.OMI_JOB_FETCH_RUN_MARKER;
+  if (!file) return { pid: null, clear: () => {} };
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }), "utf8");
+  } catch {
+    return { pid: null, clear: () => {} }; // best effort — never fatal
+  }
+  return {
+    pid: process.pid,
+    clear: () => {
+      try {
+        rmSync(file, { force: true });
+      } catch {
+        /* best effort */
+      }
+    },
+  };
+}
+
+/**
+ * Stop-marker watch. When OMI_JOB_FETCH_STOP_FILE is set, polls the marker
+ * file every 250ms (and treats SIGINT/SIGTERM as an abort) so a dashboard Stop
+ * click lands without killing the process — the run then finalizes with the
+ * partial results it already collected. Returns an `aborted()` probe for
+ * runPipeline and a `dispose()` to stop polling once the run is done.
+ */
+export function createStopWatch(
+  stopFile?: string,
+): { aborted: () => boolean; dispose: () => void } {
+  let aborted = false;
+  const timer = stopFile
+    ? setInterval(() => {
+        if (existsSync(stopFile)) aborted = true;
+      }, 250)
+    : null;
+  const onSignal = () => {
+    aborted = true;
+  };
+  if (stopFile) {
+    process.once("SIGINT", onSignal);
+    process.once("SIGTERM", onSignal);
+  }
+  return {
+    aborted: () => aborted,
+    dispose: () => {
+      if (timer) clearInterval(timer);
+      if (stopFile) {
+        process.off("SIGINT", onSignal);
+        process.off("SIGTERM", onSignal);
+      }
     },
   };
 }
@@ -199,47 +339,82 @@ async function runCommand(argv: string[]): Promise<number> {
     return 0;
   }
 
-  const { config } = findConfig(parsed.configPath);
-  const queries = normalizeQueries(config.global?.queries);
-  const multiQuery = queries.length > 1;
-  const trigger = process.env.OMI_JOB_FETCH_TRIGGER;
+  // Write the running marker before anything that can throw: the finally clears
+  // it on every exit path (normal return, stop-abort, and thrown errors that
+  // otherwise skip straight to process.exit(1) in main()).
+  const marker = createRunMarker();
+  try {
+    const { config } = findConfig(parsed.configPath);
+    const queries = normalizeQueries(config.global?.queries);
+    const multiQuery = queries.length > 1;
+    const trigger = process.env.OMI_JOB_FETCH_TRIGGER;
 
-  const renderer = createRenderer();
-  const { jobsFile, summary } = await runPipeline(config, adapters, {
-    ...(trigger ? { trigger } : {}),
-    onAdapterStart: (index, total, adapterId, query) => {
-      renderer.boundary(`[${index}/${total}] running ${adapterId}${multiQuery ? ` · "${query}"` : ""} …`);
-    },
-    onAdapterDone: (index, total, status, query) => {
-      renderer.boundary(`[${index}/${total}]${statusLine(status)}${multiQuery ? ` · "${query}"` : ""}`);
-    },
-    onProgress: (adapterId, status) => {
-      renderer.live(`  ${adapterId} · ${status}`);
-    },
-  });
-  renderer.boundary(`Wrote ${fmt(summary.jobs)} jobs to ${jobsFile}`);
-  if (summary.db) {
-    const { added, updated, removed, total } = summary.db;
-    renderer.boundary(`[db] +${fmt(added)} new, ${fmt(updated)} updated, ${fmt(removed)} expired, ${fmt(total)} total`);
-  }
-  if (summary.dbError) {
-    renderer.boundary(`[db] sync failed: ${summary.dbError} (run results saved normally)`);
-  }
-  // Adapter operational warnings (ignored inputs, caps, failures) — meta.warnings.
-  // With multiple queries the same warning repeats per run; print each one once.
-  const warned = new Set<string>();
-  for (const s of summary.adapters) {
-    const warnings = Array.isArray(s.meta?.warnings) ? (s.meta.warnings as unknown[]) : [];
-    for (const w of warnings) {
-      if (typeof w === "string" && w.trim() && !warned.has(`${s.adapter}::${w}`)) {
-        warned.add(`${s.adapter}::${w}`);
-        console.log(`  [warn]  ${s.adapter} — ${w}`);
+    const renderer = createRenderer();
+    const progress = createProgressFile();
+    // Mirror every console line to the progress file so the dashboard can tail it.
+    const boundary = (line: string) => {
+      renderer.boundary(line);
+      progress.line(line);
+    };
+    const live = (text: string) => {
+      renderer.live(text);
+      progress.line(text);
+    };
+    const note = (line: string) => {
+      console.log(line);
+      progress.line(line);
+    };
+
+    const stop = createStopWatch(process.env.OMI_JOB_FETCH_STOP_FILE);
+    const { jobsFile, summary } = await runPipeline(config, adapters, {
+      ...(trigger ? { trigger } : {}),
+      aborted: stop.aborted,
+      onAdapterStart: (index, total, adapterId, query) => {
+        boundary(`[${index}/${total}] running ${adapterId}${multiQuery ? ` · "${query}"` : ""} …`);
+      },
+      onAdapterDone: (index, total, status, query) => {
+        boundary(`[${index}/${total}]${statusLine(status)}${multiQuery ? ` · "${query}"` : ""}`);
+      },
+      onProgress: (adapterId, status) => {
+        live(`  ${adapterId} · ${status}`);
+      },
+    });
+    stop.dispose();
+    boundary(`Wrote ${fmt(summary.jobs)} jobs to ${jobsFile}`);
+    if (summary.db) {
+      const { added, updated, removed, total } = summary.db;
+      boundary(`[db] +${fmt(added)} new, ${fmt(updated)} updated, ${fmt(removed)} expired, ${fmt(total)} total`);
+    }
+    if (summary.dbError) {
+      boundary(`[db] sync failed: ${summary.dbError} (run results saved normally)`);
+    }
+    // Adapter operational warnings (ignored inputs, caps, failures) — meta.warnings.
+    // With multiple queries the same warning repeats per run; print each one once.
+    const warned = new Set<string>();
+    for (const s of summary.adapters) {
+      const warnings = Array.isArray(s.meta?.warnings) ? (s.meta.warnings as unknown[]) : [];
+      for (const w of warnings) {
+        if (typeof w === "string" && w.trim() && !warned.has(`${s.adapter}::${w}`)) {
+          warned.add(`${s.adapter}::${w}`);
+          note(`  [warn]  ${s.adapter} — ${w}`);
+        }
       }
     }
+    // Manual-review trail: every dropped / deduped case, compacted and grouped by title.
+    for (const line of renderTrail(summary)) note(line);
+    // File-only result line for the dashboard card (stdout stays byte-identical).
+    const resultText = [
+      `${fmt(summary.jobs)} jobs, ${fmt(summary.dropped)} dropped, ${fmt(summary.duplicatesRemoved)} deduped`,
+      ...(summary.db
+        ? [`db +${fmt(summary.db.added)} new, ${fmt(summary.db.updated)} updated, ${fmt(summary.db.removed)} removed`]
+        : []),
+      ...(summary.stopped ? ["stopped"] : []),
+    ].join(" · ");
+    progress.result(resultText);
+    return summary.stopped ? 130 : exitCode(summary);
+  } finally {
+    marker.clear();
   }
-  // Manual-review trail: every dropped / deduped case, compacted and grouped by title.
-  for (const line of renderTrail(summary)) console.log(line);
-  return exitCode(summary);
 }
 
 async function main(): Promise<void> {
@@ -249,6 +424,8 @@ async function main(): Promise<void> {
     code = await runCronCommand(argv.slice(1));
   } else if (argv[0] === "run") {
     code = await runCommand(argv.slice(1));
+  } else if (argv[0] === "dashboard") {
+    code = await runDashboardCommand(argv.slice(1));
   } else {
     // Bare `omijobs [--config …]` behaves as `omijobs run`.
     code = await runCommand(argv);

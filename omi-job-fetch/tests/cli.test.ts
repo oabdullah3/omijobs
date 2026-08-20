@@ -1,9 +1,14 @@
 import { afterEach, describe, it, expect } from "vitest";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { compactLink, createRenderer, findConfig, parseArgs, renderTrail } from "../src/cli.js";
+import { compactLink, createProgressFile, createRenderer, createRunMarker, createStopWatch, findConfig, parseArgs, parseDashboardFlags, renderTrail } from "../src/cli.js";
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
+}
 
 describe("parseArgs", () => {
   it("captures --config <path>", () => {
@@ -60,9 +65,9 @@ describe("findConfig", () => {
     }
   });
 
-  it("defaults to the config.json next to package.json", () => {
+  it("defaults to the fixed realtime config under dashboard.configs", () => {
     const { path } = findConfig();
-    expect(resolve(path)).toBe(resolve(dirname(fileURLToPath(import.meta.url)), "..", "config.json"));
+    expect(resolve(path)).toBe(resolve(dirname(fileURLToPath(import.meta.url)), "..", "dashboard.configs", "realtime", "config.json"));
   });
 
   it("throws when the explicit path does not exist", async () => {
@@ -137,6 +142,97 @@ describe("createRenderer", () => {
   });
 });
 
+describe("createProgressFile", () => {
+  it("mirrors lines and a result line into the env-gated progress file, truncated per run", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-progress-"));
+    try {
+      const file = join(dir, "runs", "x.log");
+      process.env.OMI_JOB_FETCH_PROGRESS_FILE = file;
+      try {
+        const first = createProgressFile();
+        first.line("  gc · page 1/2 · 3 found");
+        first.line("  jd · 5/10");
+        first.result("3 jobs, 1 dropped, 0 deduped");
+        // A fresh run truncates — the previous run's tail must not leak through.
+        const second = createProgressFile();
+        second.line("fresh line");
+        expect(readFileSync(file, "utf8")).toBe("fresh line\n");
+        second.result("4 jobs, 0 dropped, 0 deduped");
+        expect(readFileSync(file, "utf8")).toBe("fresh line\nresult: 4 jobs, 0 dropped, 0 deduped\n");
+      } finally {
+        delete process.env.OMI_JOB_FETCH_PROGRESS_FILE;
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("no-ops when OMI_JOB_FETCH_PROGRESS_FILE is unset", async () => {
+    delete process.env.OMI_JOB_FETCH_PROGRESS_FILE;
+    const p = createProgressFile();
+    expect(() => {
+      p.line("x");
+      p.result("y");
+    }).not.toThrow();
+  });
+});
+
+describe("createRunMarker", () => {
+  it("writes a {pid, startedAt} marker when the env is set and clears it on clear()", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-marker-"));
+    try {
+      const file = join(dir, "runs", "x.running");
+      process.env.OMI_JOB_FETCH_RUN_MARKER = file;
+      try {
+        const marker = createRunMarker();
+        const parsed = JSON.parse(readFileSync(file, "utf8")) as { pid?: unknown; startedAt?: unknown };
+        expect(parsed.pid).toBe(process.pid);
+        expect(typeof parsed.startedAt).toBe("string");
+        marker.clear();
+        expect(existsSync(file)).toBe(false);
+      } finally {
+        delete process.env.OMI_JOB_FETCH_RUN_MARKER;
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("no-ops when OMI_JOB_FETCH_RUN_MARKER is unset", () => {
+    delete process.env.OMI_JOB_FETCH_RUN_MARKER;
+    const marker = createRunMarker();
+    expect(marker.pid).toBeNull();
+    expect(() => marker.clear()).not.toThrow();
+  });
+});
+
+describe("createStopWatch", () => {
+  it("flips aborted() once the stop marker file appears", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jobfetch-stop-"));
+    try {
+      const stopFile = join(dir, "stop");
+      const watch = createStopWatch(stopFile);
+      try {
+        expect(watch.aborted()).toBe(false);
+        writeFileSync(stopFile, new Date().toISOString(), "utf8");
+        const deadline = Date.now() + 2000;
+        while (!watch.aborted() && Date.now() < deadline) await sleep(20);
+        expect(watch.aborted()).toBe(true);
+      } finally {
+        watch.dispose();
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("stays false when no stop file is set (no polling, no signal handlers)", () => {
+    const watch = createStopWatch();
+    watch.dispose();
+    expect(watch.aborted()).toBe(false);
+  });
+});
+
 describe("compactLink", () => {
   it("strips scheme/host and generic action segments down to the job-ID tail", () => {
     expect(compactLink("https://hk.jobsdb.com/job/94012335/apply")).toBe("#94012335");
@@ -194,5 +290,20 @@ describe("renderTrail", () => {
 
   it("returns [] when there are no dropped or deduped cases", () => {
     expect(renderTrail({ droppedCases: [], dedupedCases: [] })).toEqual([]);
+  });
+});
+
+describe("parseDashboardFlags", () => {
+  it("parses --port and --port= forms", () => {
+    expect(parseDashboardFlags(["--port", "5212"])).toEqual({ port: 5212 });
+    expect(parseDashboardFlags(["--port=5213"])).toEqual({ port: 5213 });
+    expect(parseDashboardFlags([])).toEqual({});
+  });
+
+  it("rejects bad ports and unknown flags", () => {
+    expect(parseDashboardFlags(["--port", "abc"]).error).toBeDefined();
+    expect(parseDashboardFlags(["--port", "0"]).error).toBeDefined();
+    expect(parseDashboardFlags(["--port", "70000"]).error).toBeDefined();
+    expect(parseDashboardFlags(["--bogus"]).error).toBeDefined();
   });
 });

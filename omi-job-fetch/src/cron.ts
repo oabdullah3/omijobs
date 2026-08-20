@@ -111,13 +111,13 @@ export function nextDueAt(schedule: CronSchedule, after: Date): Date {
 
 /**
  * Whether a job is due at `now`.
- * - Interval: null lastRun → due immediately (catch-up); otherwise due when the
- *   interval has elapsed since lastRun.
- * - Clock: null lastRun → not due until the next occurrence; otherwise due when
- *   that next occurrence has been reached.
+ * - Never-run (null lastRun) → due immediately for any schedule (catch-up): the
+ *   first ever run fires on the next gateway tick, then the schedule takes over.
+ * - Interval: otherwise due when the interval has elapsed since lastRun.
+ * - Clock: otherwise due when that next occurrence has been reached.
  */
 export function isDue(job: CronJob, now: Date): boolean {
-  if (job.lastRun === null) return job.parsed.type === "interval";
+  if (job.lastRun === null) return true;
   const last = new Date(job.lastRun);
   if (Number.isNaN(last.getTime())) return false;
   return now.getTime() >= nextDueAt(job.parsed, last).getTime();
@@ -183,17 +183,39 @@ export interface SpawnOutcome {
   error?: string;
 }
 
-/** Spawn one run: `node <cli> run --config <path>` with the cron trigger env set. */
-export function defaultSpawnJob(cliPath: string) {
-  return (job: CronJob, configPath: string): Promise<SpawnOutcome> =>
-    new Promise((resolveOutcome) => {
+/**
+ * Spawn one run: `node <cli> run --config <path>` with the cron trigger env set.
+ * Also wires the run's progress file, stop-marker file, and running-marker file in
+ * `<stateDir>/runs/<job.id>.{log,stop,running}` — the dashboard tails the .log for
+ * live progress, writes the .stop marker when the user hits Stop, and reattaches
+ * to a run in flight via the .running marker (the CLI writes its PID there at
+ * start and clears it on exit). Stale markers from any previous run are cleared
+ * before spawn.
+ */
+export function defaultSpawnJob(cliPath: string, stateDir: string) {
+  return (job: CronJob, configPath: string): Promise<SpawnOutcome> => {
+    const runsDir = resolve(stateDir, "runs");
+    mkdirSync(runsDir, { recursive: true });
+    const progressFile = resolve(runsDir, `${job.id}.log`);
+    const stopFile = resolve(runsDir, `${job.id}.stop`);
+    const markerFile = resolve(runsDir, `${job.id}.running`);
+    rmSync(stopFile, { force: true });
+    rmSync(markerFile, { force: true });
+    return new Promise((resolveOutcome) => {
       const child = spawn(process.execPath, [cliPath, "run", "--config", configPath], {
-        env: { ...process.env, OMI_JOB_FETCH_TRIGGER: "cron" },
+        env: {
+          ...process.env,
+          OMI_JOB_FETCH_TRIGGER: "cron",
+          OMI_JOB_FETCH_PROGRESS_FILE: progressFile,
+          OMI_JOB_FETCH_STOP_FILE: stopFile,
+          OMI_JOB_FETCH_RUN_MARKER: markerFile,
+        },
         stdio: "ignore",
       });
       child.on("error", (error) => resolveOutcome({ ok: false, code: 1, error: error.message }));
       child.on("exit", (code) => resolveOutcome({ ok: true, code: code ?? 1 }));
     });
+  };
 }
 
 export function outcomeText(outcome: SpawnOutcome): string {
@@ -243,14 +265,14 @@ async function sleepUntil(ms: number, stopFile: string): Promise<boolean> {
 export async function runGateway(options: GatewayOptions): Promise<void> {
   mkdirSync(options.stateDir, { recursive: true });
   const clock = options.now ?? (() => new Date());
-  const tickMs = options.tickMs ?? 60_000;
+  const tickMs = options.tickMs ?? 5_000;
   const logFile = resolve(options.stateDir, "cron.log");
   const log =
     options.log ??
     ((line: string) => {
       appendFileSync(logFile, `${line}\n`);
     });
-  const spawnJob = options.spawnJob ?? defaultSpawnJob(options.cliPath);
+  const spawnJob = options.spawnJob ?? defaultSpawnJob(options.cliPath, options.stateDir);
   const pidFile = resolve(options.stateDir, "gateway.pid");
   const stopFile = resolve(options.stateDir, "stop");
 
@@ -300,6 +322,7 @@ export async function runGateway(options: GatewayOptions): Promise<void> {
           await writeCron((c) => {
             const target = c.jobs.find((j) => j.id === job.id);
             if (target) target.lastRun = now.toISOString();
+            if (target) target.lastStatus = "running";
           });
           inFlight.add(job.id);
           log(`[${job.id}] spawn ${job.config} (${job.schedule})`);

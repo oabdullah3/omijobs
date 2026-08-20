@@ -342,7 +342,7 @@ async function cmdRun(cronFile: string): Promise<number> {
     console.log("no enabled cron jobs to run (see: omijobs cron list)");
     return 0;
   }
-  const spawnJob = defaultSpawnJob(CLI_PATH);
+  const spawnJob = defaultSpawnJob(CLI_PATH, STATE_DIR);
   let failed = 0;
   await Promise.all(
     jobs.map(async (job: CronJob) => {

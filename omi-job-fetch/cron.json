@@ -3,11 +3,11 @@
   "jobs": [
     {
       "id": "finance",
-      "config": "test.configs/finance.cron.config.json",
-      "schedule": "every 5 minute",
+      "config": "dashboard.configs/cron/finance.config.json",
+      "schedule": "every 6 hours",
       "enabled": true,
-      "lastRun": "2026-08-19T07:31:37.848Z",
-      "lastStatus": "ok"
+      "lastRun": "2026-08-20T08:41:35.986Z",
+      "lastStatus": "running"
     }
   ]
 }

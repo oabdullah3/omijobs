@@ -1,14 +1,23 @@
 {
   "global": {
-    "queries": ["finance intern"],
+    "queries": [
+      "tech intern"
+    ],
     "delayMs": 1000,
-    "retryBackoffMs": [4000, 8000, 16000],
+    "retryBackoffMs": [
+      4000,
+      8000,
+      16000
+    ],
     "maxPages": 100,
     "detailConcurrency": 4,
     "detailDelayMs": 0
   },
   "portals": {
-    "enabled": ["linkedin", "jobsdb", "gradconnection", "efinancialcareers", "ctgoodjobs"],
+    "enabled": [
+      "gradconnection",
+      "jobsdb"
+    ],
     "config": {
       "linkedin": {
         "location": null,
@@ -46,9 +55,30 @@
       }
     }
   },
-  "ats": { "enabled": [], "config": {} },
-  "outputs": { "required": ["apply_url", "title", "company", "location", "source"] },
-  "dedup": { "fields": ["title", "company", "location"] },
+  "ats": {
+    "enabled": [],
+    "config": {}
+  },
+  "outputs": {
+    "required": [
+      "apply_url",
+      "title",
+      "company",
+      "location",
+      "source"
+    ]
+  },
+  "dedup": {
+    "fields": [
+      "title",
+      "company",
+      "location"
+    ]
+  },
   "outputDir": "output",
-  "db": { "enabled": false, "file": "jobs.db", "retentionDays": 30 }
+  "db": {
+    "enabled": true,
+    "file": "tech.db",
+    "retentionDays": 30
+  }
 }

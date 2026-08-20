@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isDue, loadCron, nextDueAt, parseSchedule, runGateway, saveCron } from "../src/cron.js";
+import { defaultSpawnJob, isDue, loadCron, nextDueAt, parseSchedule, runGateway, saveCron } from "../src/cron.js";
 import type { CronJob, CronSchedule } from "../src/types.js";
 
 function job(over: Partial<CronJob> = {}): CronJob {
@@ -98,8 +98,9 @@ describe("isDue", () => {
     expect(isDue(job({ schedule: "every 30m", lastRun: "2026-08-19T11:45:00.000Z" }), NOW)).toBe(false);
   });
 
-  it("clock: never-run job waits for its slot instead of firing immediately", () => {
-    expect(isDue(job({ schedule: "daily at 09:00" }), NOW)).toBe(false);
+  it("clock: never-run job catches up on its first run (due immediately), then follows the schedule", () => {
+    expect(isDue(job({ schedule: "daily at 09:00" }), NOW)).toBe(true);
+    expect(isDue(job({ schedule: "daily at 09:00", lastRun: "2026-08-19T09:00:00.000Z" }), NOW)).toBe(false);
   });
 
   it("clock: fires when today's occurrence has passed since lastRun", () => {
@@ -177,6 +178,64 @@ describe("cron.json load/save", () => {
   });
 });
 
+describe("defaultSpawnJob", () => {
+  it("spawns the CLI with trigger/progress/stop env and clears a stale stop marker", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "omijobs-cron-"));
+    try {
+      const stateDir = join(dir, "state");
+      const stubOut = join(dir, "stub-out.txt");
+      const cli = join(dir, "stub.cjs");
+      await writeFile(cli, [
+        'const fs = require("node:fs");',
+        "fs.writeFileSync(process.env.STUB_OUT, [",
+        "  'trigger=' + (process.env.OMI_JOB_FETCH_TRIGGER || ''),",
+        "  'progress=' + (process.env.OMI_JOB_FETCH_PROGRESS_FILE || ''),",
+        "  'stop=' + (process.env.OMI_JOB_FETCH_STOP_FILE || ''),",
+        "  'marker=' + (process.env.OMI_JOB_FETCH_RUN_MARKER || ''),",
+        "].join('\\n'));",
+        "process.exit(0);",
+      ].join("\n"));
+      process.env.STUB_OUT = stubOut;
+      try {
+        const spawn = defaultSpawnJob(cli, stateDir);
+        const runsDir = join(stateDir, "runs");
+        await mkdir(runsDir, { recursive: true });
+        const stopFile = join(runsDir, "job.stop");
+        const markerFile = join(runsDir, "job.running");
+        await writeFile(stopFile, "stale stop marker from a previous run");
+        await writeFile(markerFile, "stale run marker from a previous run");
+        const outcome = await spawn(
+          {
+            id: "job",
+            config: "config.json",
+            schedule: "every 30m",
+            enabled: true,
+            lastRun: null,
+            lastStatus: null,
+            parsed: parseSchedule("every 30m"),
+          },
+          join(dir, "config.json"),
+        );
+        expect(outcome.ok).toBe(true);
+        expect(outcome.code).toBe(0);
+        // The stale markers were cleared at spawn so the fresh run isn't aborted
+        // the moment it starts (stop) or misread as still running (marker).
+        expect(existsSync(stopFile)).toBe(false);
+        expect(existsSync(markerFile)).toBe(false);
+        const seen = readFileSync(stubOut, "utf8");
+        expect(seen).toContain("trigger=cron");
+        expect(seen).toContain(`progress=${join(stateDir, "runs", "job.log")}`);
+        expect(seen).toContain(`stop=${stopFile}`);
+        expect(seen).toContain(`marker=${join(stateDir, "runs", "job.running")}`);
+      } finally {
+        delete process.env.STUB_OUT;
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("runGateway", () => {
   it("spawns a due interval job, records lastRun/lastStatus, and cleans up state", async () => {
     const { dir, cronFile, stateDir } = await makeDir();
@@ -209,7 +268,7 @@ describe("runGateway", () => {
     }
   });
 
-  it("does not spawn a never-run clock job before its slot", async () => {
+  it("spawns a never-run clock job immediately (catch-up), then waits for its slot", async () => {
     const { dir, cronFile, stateDir } = await makeDir();
     try {
       saveCron(cronFile, { paused: false, jobs: [job({ id: "a", schedule: "daily at 09:00" })] });
@@ -228,7 +287,9 @@ describe("runGateway", () => {
       });
       setTimeout(() => writeFileSync(join(stateDir, "stop"), ""), 40);
       await done;
-      expect(spawned).toEqual([]);
+      // First-ever run fires on the first tick; once lastRun is set, the clock
+      // schedule holds it until the next 09:00, so exactly one spawn.
+      expect(spawned).toEqual(["a"]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -374,6 +435,36 @@ describe("runGateway", () => {
       expect(calls).toBeGreaterThanOrEqual(2);
       writeFileSync(join(stateDir, "stop"), "");
       await done;
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("marks a job as running at spawn, then resolves to ok at completion", async () => {
+    const { dir, cronFile, stateDir } = await makeDir();
+    try {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      saveCron(cronFile, { paused: false, jobs: [job({ id: "a", lastRun: "2026-08-19T11:00:00.000Z" })] });
+      const done = runGateway({
+        cronFile,
+        cliPath: "cli",
+        stateDir,
+        now: () => new Date("2026-08-19T12:00:00.000Z"),
+        tickMs: 10,
+        log: () => {},
+        spawnJob: async () => {
+          // The run is in flight here — the store must already say "running".
+          await sleep(20);
+          expect(loadCron(cronFile).jobs[0].lastStatus).toBe("running");
+          release();
+          return { ok: true, code: 0 };
+        },
+      });
+      await gate;
+      writeFileSync(join(stateDir, "stop"), "");
+      await done;
+      expect(loadCron(cronFile).jobs[0].lastStatus).toBe("ok");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -1,7 +1,7 @@
 # config.guide — omijobs configuration reference
 
 `config.json` is the single point of control. The CLI takes **one flag**: `--config <path>`
-(defaults to `config.json` in the folder containing `package.json`). Everything else —
+(defaults to `dashboard.configs/realtime/config.json`). Everything else —
 which queries to run, which adapters, each adapter's search params and pacing — lives in
 the config file. Every option below is real, pulled from the adapters' manifests and code.
 
@@ -115,9 +115,10 @@ the package requires **Node ≥ 24**.
 
 ### Scheduled runs (`cron`)
 
-Scheduled runs are managed separately from `config.json` — a small `cron.json` (default: the
-folder containing `package.json`) lists jobs, each pointing at a `config.json` plus a
-human-friendly schedule, and a self-managed background **gateway** spawns them on time.
+Scheduled runs are managed separately from the realtime config — a small `cron.json` (default:
+the folder containing `package.json`) lists jobs, each pointing at its own config under
+`dashboard.configs/cron/` plus a human-friendly schedule, and a self-managed background
+**gateway** spawns them on time.
 
 The gateway is a detached process with OS auto-start at login (Windows HKCU Run key,
 macOS LaunchAgent, Linux systemd user unit), so `omijobs cron start` once is enough — it
@@ -131,7 +132,7 @@ survives logout and reboot. All state lives in `~/.omijobs` (pidfile, stop marke
   "jobs": [
     {
       "id": "daily-finance",        // unique, slugged from --name or the config filename
-      "config": "config.json",      // resolved relative to the cron.json folder
+      "config": "dashboard.configs/cron/daily-finance.config.json",  // resolved relative to the cron.json folder
       "schedule": "daily at 09:00", // human-friendly grammar, see below
       "enabled": true,              // per-job on/off
       "lastRun": null,              // written by the gateway (ISO-8601) — don't edit
