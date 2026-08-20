@@ -25,8 +25,11 @@ import type { Adapter, AdapterResult, Job } from "../types.js";
  *    TEMPORARY/PERMANENT/INTERNSHIPS_AND_GRADUATE_TRAINEE), filters.seniority
  *    (INTERN_GRADUATE … AVP_SENIOR). sortBy is a server-side no-op (verified
  *    identical orderings) — skipped with a note. location is free text, georesolved
- *    server-side (meta.searchedLocation echoes the resolution); countryCode2
- *    (config, default HK) scopes the country.
+ *    server-side (meta.searchedLocation echoes the resolution); it is the ONLY
+ *    thing that scopes the search — countryCode2 alone is parsed but ignored by the
+ *    API (verified live: countryCode2=HK alone returns the worldwide pool). When no
+ *    location is given, the adapter derives one from countryCode2 (HK → "Hong Kong")
+ *    so the country code actually scopes the country.
  *
  * 4. is_open. No structured open/closed field — infer expirationDate > now. Caveat:
  *    expirationDateType INVENTORY marks evergreen employer posts (validThrough can
@@ -54,6 +57,33 @@ const DEFAULT_MAX_PAGES = 100;
 const DEFAULT_DETAIL_CONCURRENCY = 4;
 const DEFAULT_DETAIL_DELAY_MS = 0;
 const DEFAULT_COUNTRY_CODE = "HK";
+
+/**
+ * countryCode2 → a location term the eFC API actually georesolves. The search API
+ * ignores countryCode2 on its own (verified live: countryCode2=HK alone returns the
+ * worldwide pool) — only the free-text `location` param scopes the search. Full
+ * country names always georesolve; bare codes resolve for some countries but not
+ * all (AE does not), so the map sends the full name when known and falls back to
+ * the bare code otherwise. An explicit location input always wins.
+ */
+const COUNTRY_LOCATION: Record<string, string> = {
+  AE: "United Arab Emirates",
+  AU: "Australia",
+  BE: "Belgium",
+  CA: "Canada",
+  CH: "Switzerland",
+  DE: "Germany",
+  ES: "Spain",
+  FR: "France",
+  GB: "United Kingdom",
+  HK: "Hong Kong",
+  IE: "Ireland",
+  IT: "Italy",
+  LU: "Luxembourg",
+  NL: "Netherlands",
+  SG: "Singapore",
+  US: "United States",
+};
 
 /** employment_type contract value → eFC filter params (employmentType vs positionType). */
 const EMPTYPE_FILTERS: Record<string, { employmentType?: string; positionType?: string }> = {
@@ -257,7 +287,7 @@ export const eFinancialCareersAdapter: Adapter = {
     ],
     extraInputs: {
       ua: { desc: "Browser User-Agent for the endpoints. Reads EF_UA from env. Default: bundled Chrome UA.", env: "EF_UA" },
-      countryCode2: { desc: "Country scope for the search. Default: HK." },
+      countryCode2: { desc: "Country scope, sent as the search location (HK → \"Hong Kong\"). Default: HK." },
       delayMs: { desc: "Pacing (ms) between sweep requests. Default 1000." },
       maxPages: { desc: "Hard cap on pages swept (200 jobs each). Default 100." },
       retryBackoffMs: { desc: "Backoff schedule (ms) for retries. Default [4000, 8000, 16000]." },
@@ -280,8 +310,12 @@ export const eFinancialCareersAdapter: Adapter = {
       : RETRY_BACKOFF_MS;
 
     const query = typeof ctx.input.query === "string" ? ctx.input.query.trim() : "";
+    // Explicit location wins; otherwise derive one from countryCode2 so the country
+    // code actually scopes the search (the API ignores countryCode2 on its own).
     const location =
-      typeof ctx.input.location === "string" && ctx.input.location.trim() ? ctx.input.location.trim() : null;
+      typeof ctx.input.location === "string" && ctx.input.location.trim()
+        ? ctx.input.location.trim()
+        : COUNTRY_LOCATION[countryCode.toUpperCase()] ?? countryCode;
     const notes: string[] = [];
 
     // Dot-notation filter params; prefixed with "filters." at build time.
@@ -310,7 +344,7 @@ export const eFinancialCareersAdapter: Adapter = {
     const buildUrl = (page: number): string => {
       const params = new URLSearchParams();
       params.set("q", query);
-      if (location) params.set("location", location);
+      params.set("location", location);
       params.set("countryCode2", countryCode);
       params.set("culture", "en");
       for (const [k, v] of Object.entries(filters)) params.set(`filters.${k}`, v);
@@ -417,7 +451,7 @@ export const eFinancialCareersAdapter: Adapter = {
         applyFetched,
         applyFailed,
         note: [
-          "deterministic GET search (200/page, page param) driven by meta.totalResults; description is inline in the list (HTML → plain text, no detail request); dedups by jobId across the sweep (defensive — eFC pages are disjoint); apply_url = external_job_application_url from the apply-information API for external jobs (fetched concurrency-capped, ~73% of HK), else the job detail page; job_page_url = detailsPageUrl prefixed with the www.efinancialcareers.hk host; posted_at/expires_at = postedDate/expirationDate ISO; is_open = expirationDate > now (expirationDateType INVENTORY marks evergreen employer posts); countryCode2 (config, default HK) scopes the search; location is free text georesolved server-side.",
+          "deterministic GET search (200/page, page param) driven by meta.totalResults; description is inline in the list (HTML → plain text, no detail request); dedups by jobId across the sweep (defensive — eFC pages are disjoint); apply_url = external_job_application_url from the apply-information API for external jobs (fetched concurrency-capped, ~73% of HK), else the job detail page; job_page_url = detailsPageUrl prefixed with the www.efinancialcareers.hk host; posted_at/expires_at = postedDate/expirationDate ISO; is_open = expirationDate > now (expirationDateType INVENTORY marks evergreen employer posts); the search is scoped by the free-text location param, georesolved server-side — countryCode2 alone is ignored by the API, so when no location is configured the adapter sends the country name derived from countryCode2 (HK → \"Hong Kong\").",
           ...notes,
         ].join(" "),
         // Short operational notes surfaced by the CLI as [warn] lines (ignored inputs, caps, failures).

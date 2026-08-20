@@ -95,7 +95,7 @@ changes the scope:
 - **ctgoodjobs** — Hong Kong only; `location` is ignored
 - **gradconnection** / **jobsdb** — HK by default (gradconnection's `country`, jobsdb's
   `siteKey`)
-- **efinancialcareers** — country-scoped by `countryCode2`
+- **efinancialcareers** — country-scoped by `countryCode2` (sent as the search `location` when unset)
 - **linkedin** — the only global portal; set `location` to scope it
 
 ### Environment variables

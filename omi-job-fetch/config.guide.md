@@ -278,13 +278,16 @@ Finance-sector job board (global site, `countryCode2` scopes the search). Determ
 search (200/page driven by `meta.totalResults`), **full JD inline in the list** (no detail
 request), and the apply URL resolved per-job: the apply-information API for external
 applications (~73% of HK), the detail page otherwise. Country-scoped by `countryCode2` —
-**location narrows within that country**.
+when no `location` is given, the adapter sends the country name derived from the code
+(HK → "Hong Kong") as the `location` term, which is the only thing the API actually
+filters by. **`countryCode2` alone is ignored by the API — an explicit `location`
+narrows within (and overrides) that scope.**
 
 ### Config options (`portals.config.efinancialcareers`)
 
 | Option | Default | Effect |
 |---|---|---|
-| `countryCode2` | `HK` | Country scope for the search (HK, SG, …). This is the geographic scope. |
+| `countryCode2` | `HK` | Country scope (HK, SG, …). Sent as the search `location` when `location` is unset (HK → "Hong Kong"). |
 | `delayMs` | 1000 (global) | Pacing between sweep requests. |
 | `maxPages` | 100 (global) | Hard cap on pages swept (200 jobs each → 20,000-job ceiling). |
 | `retryBackoffMs` | [4000, 8000, 16000] (global) | Backoff schedule for retries. |
@@ -296,7 +299,7 @@ applications (~73% of HK), the detail page otherwise. Country-scoped by `country
 | Config key | Maps to | Impact |
 |---|---|---|
 | `query` (global) | `q` | Keyword search. |
-| `location` | `location` | Free text, georesolved server-side ("Hong Kong" → Country precision, radius 40). |
+| `location` | `location` | Free text, georesolved server-side ("Hong Kong" → Country precision, radius 40). When unset, the adapter derives it from `countryCode2` (HK → "Hong Kong") — this is the only thing that scopes the search. |
 | `posted_within_days` | `filters.postedDate` | ONE/THREE/SEVEN — **capped at 7 days**; larger requests are skipped with a note (post-filter client-side), not silently narrowed. |
 | `employment_type` | `filters.employmentType` + `filters.positionType` | full-time→FULL_TIME, part-time→PART_TIME; permanent→PERMANENT, contract→CONTRACT, temporary→TEMPORARY, internship/intern→INTERNSHIPS_AND_GRADUATE_TRAINEE (the last four are positionType). |
 | `seniority` | `filters.seniority` | entry/intern→INTERN_GRADUATE, junior→ANALYST, middle→ASSOCIATE_MID_LEVEL, senior→AVP_SENIOR. |
@@ -354,5 +357,5 @@ Which search param actually does something per portal (✓ = honors, ✗ = no-op
 
 Geography at a glance: **ctgoodjobs, gradconnection, jobsdb** are inherently HK-scoped
 (ctgoodjobs ignores location; gradconnection/jobsdb narrow by it); **efinancialcareers** is
-country-scoped by `countryCode2` (location narrows within it); **linkedin** is global unless
-you set a location.
+country-scoped by `countryCode2` — sent as the search `location` when unset (location narrows
+within it); **linkedin** is global unless you set a location.

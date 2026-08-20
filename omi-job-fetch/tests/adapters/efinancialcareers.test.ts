@@ -231,12 +231,30 @@ describe("eFinancialCareersAdapter", () => {
     expect(result.meta?.warnings).toContain(`seniority "guru" has no known eFinancialCareers level; skipped`);
   });
 
-  it("honors the countryCode2 config override and omits location when absent", async () => {
+  it("honors the countryCode2 config override and derives the location from it when absent", async () => {
     const state = mockFetch();
     await eFinancialCareersAdapter.run({ input: { query: "x" }, env: {}, config: { ...FAST, countryCode2: "SG" } });
     const params = new URL(state.searchUrls[0]).searchParams;
     expect(params.get("countryCode2")).toBe("SG");
-    expect(params.get("location")).toBeNull();
+    expect(params.get("location")).toBe("Singapore");
+  });
+
+  it("derives a country-name location from an unknown countryCode2 (falls back to the bare code)", async () => {
+    const state = mockFetch();
+    await eFinancialCareersAdapter.run({ input: { query: "x" }, env: {}, config: { ...FAST, countryCode2: "XX" } });
+    const params = new URL(state.searchUrls[0]).searchParams;
+    expect(params.get("location")).toBe("XX");
+  });
+
+  it("prefers an explicit location input over the countryCode2-derived one", async () => {
+    const state = mockFetch();
+    await eFinancialCareersAdapter.run({
+      input: { query: "x", location: "London" },
+      env: {},
+      config: { ...FAST, countryCode2: "GB" },
+    });
+    const params = new URL(state.searchUrls[0]).searchParams;
+    expect(params.get("location")).toBe("London");
   });
 
   it("uses the EF_UA env var for all requests, falling back to a bundled Chrome UA", async () => {
