@@ -6,7 +6,7 @@
       "config": "dashboard.configs/cron/finance.config.json",
       "schedule": "every 6 hours",
       "enabled": true,
-      "lastRun": "2026-08-20T08:41:35.986Z",
+      "lastRun": "2026-08-21T07:23:46.427Z",
       "lastStatus": "running"
     }
   ]
