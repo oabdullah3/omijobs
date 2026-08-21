@@ -9,4 +9,7 @@ research-scratch/
 omi-job-fetch/node_modules/
 omi-job-fetch/dist/
 omi-job-fetch/output/
+omi-job-fetch/.env
+omi-job-fetch/.analysis-state*/
+omi-job-fetch/analysis/
 the-stt-test-harness.html

@@ -8,8 +8,18 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
   },
+  "files": [
+    "dist/**",
+    "dashboard/**",
+    "analysis.config.example.json",
+    "config.example.json",
+    "cron.example.json",
+    "README.md",
+    "config.guide.md"
+  ],
   "keywords": ["jobs", "ats", "recruitment", "scraper"],
   "license": "UNLICENSED",
   "devDependencies": {

@@ -90,7 +90,7 @@ exactly as before — DB mode is an extra step on top.
 |---|---|---|
 | `enabled` | `false` | Turn DB mode on (`true`). Off by default; nothing is written when off. |
 | `file` | `<outputDir>/jobs.db` | Where the SQLite file lives, resolved relative to `outputDir` (an absolute path is respected). |
-| `retentionDays` | `30` | Rows whose job `posted_at` is older than this many days are deleted after each run. Set `0` to keep everything. |
+| `retentionDays` | `30` | Set this once on the base realtime config. Runs and AI analysis use the same value; set `0` to keep everything. Cron config retention fields are ignored. |
 
 Rows (table `jobs`):
 
@@ -172,6 +172,21 @@ A cron-spawned run marks itself in its `run.json`: the summary gains `"trigger":
 Manual `omijobs run` writes no trigger field.
 
 ### Environment variables
+
+### AI analysis
+
+Analysis settings live in `~/.omijobs/analysis.json` and are seeded from
+`analysis.config.example.json`. Providers use OpenAI-format chat completions.
+Set the provider key in the process environment or package `.env`; the dashboard
+only reports `set` or `unset`.
+
+```text
+omijobs analyze base
+omijobs analyze status
+omijobs analyze stop base
+omijobs analyze providers list
+omijobs cron add-analysis --name "AI triage" --schedule "daily at 10:00" --db base
+```
 
 | Var | Used by | Effect |
 |---|---|---|

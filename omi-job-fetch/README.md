@@ -75,6 +75,24 @@ into one SQLite file (`jobs.db`) keyed by the same dedup signature — so the DB
 across runs instead of resetting each time. Rows past `retentionDays` are expired
 automatically. Turned off by default.
 
+## AI analysis
+
+The dashboard Analysis tab and the CLI score aggregate DB rows through any
+OpenAI-compatible provider. Settings are seeded from `analysis.config.example.json`
+into `~/.omijobs/analysis.json`; API keys are write-only and resolve from the
+process environment before the package `.env` file.
+
+```bash
+omijobs analyze base
+omijobs analyze status
+omijobs analyze providers list
+omijobs cron add-analysis --name "AI triage" --schedule "daily at 10:00" --db base
+```
+
+The model returns a `0..10` score and reason. The dashboard recommendation filter
+uses the configured threshold, and existing verdicts are skipped. Retention is
+owned by the base config and shared by normal runs and analysis.
+
 ## Config at a glance
 
 Everything about a run lives in `config.json` — there are no per-run query flags:
