@@ -11,7 +11,8 @@ import { discoverDbs, getJob, isBusyError, listJobs, setJobStatus, JOB_STATUSES 
 import { getCronState, runCronMutation, tailLog } from "./dashboardCron.js";
 import { listRuns, readRunStatus, readRunningMarkers, startRun } from "./dashboardRuns.js";
 import { getAnalysisDashboardState } from "./dashboardAnalysis.js";
-import { addProvider, enableProvider, loadAnalysisSettings, providerApiKeyStatus, removeProvider, saveAnalysisSettings, toPublicSettings, updateProvider, writeProviderApiKey } from "./analysisConfig.js";
+import { addProvider, enableProvider, loadAnalysisSettings, providerApiKeyStatus, removeProvider, resolveProviderApiKey, saveAnalysisSettings, toPublicSettings, updateProvider, validateSettings, writeProviderApiKey } from "./analysisConfig.js";
+import { callProvider } from "./analysisProvider.js";
 import { resolveAnalysisState, readActiveMarker } from "./analysisCli.js";
 import { bulkMarkBelowThreshold } from "./analysisDb.js";
 import type { RunConfig } from "./types.js";
@@ -179,14 +180,38 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
     if (providerRoute && method === "GET") { const settings = loadAnalysisSettings(packageDir, stateDir); sendJson(res, 200, toPublicSettings(settings, packageDir)); return; }
     if (providerRoute && method === "POST") {
       let body: any; try { body = await readBody(req); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); return; }
-      try { const settings = loadAnalysisSettings(packageDir, stateDir); const next = providerRoute[1] ? updateProvider(settings, providerRoute[1], body.provider) : addProvider(settings, body.provider); if (body.key && body.provider?.apiKeyEnv) writeProviderApiKey(body.provider, String(body.key), packageDir); saveAnalysisSettings(stateDir, next); sendJson(res, 200, { settings: toPublicSettings(next, packageDir) }); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return;
+      try {
+        const settings = loadAnalysisSettings(packageDir, stateDir);
+        const isUpdate = Boolean(providerRoute[1]);
+        const provider = body.provider;
+        // Onboarding requires a key; edits keep the existing key when the field is left blank.
+        if (!isUpdate && (!body.key || String(body.key).trim() === "")) throw new Error("provider API key is required");
+        const next = isUpdate ? updateProvider(settings, providerRoute[1], provider) : addProvider(settings, provider);
+        if (body.key && provider?.apiKeyEnv) writeProviderApiKey(provider, String(body.key), packageDir);
+        saveAnalysisSettings(stateDir, next);
+        sendJson(res, 200, { settings: toPublicSettings(next, packageDir) });
+      } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return;
     }
     if (providerRoute && method === "DELETE") { try { const next = removeProvider(loadAnalysisSettings(packageDir, stateDir), providerRoute[1]); saveAnalysisSettings(stateDir, next); sendJson(res, 200, { settings: toPublicSettings(next, packageDir) }); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return; }
     const enableRoute = /^\/api\/analysis\/providers\/([^/]+)\/enable$/i.exec(path);
     if (enableRoute && method === "POST") { try { const next = enableProvider(loadAnalysisSettings(packageDir, stateDir), enableRoute[1]); saveAnalysisSettings(stateDir, next); sendJson(res, 200, { settings: toPublicSettings(next, packageDir) }); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return; }
     const testRoute = /^\/api\/analysis\/providers\/([^/]+)\/test$/i.exec(path);
-    if (testRoute && method === "POST") { sendJson(res, 501, { error: "Provider test is available through the analyze CLI" }); return; }
-    if (path === "/api/analysis/settings" && method === "PUT") { try { const body = await readBody(req) as Record<string, unknown>; const current = loadAnalysisSettings(packageDir, stateDir); const next = { ...current, ...body }; saveAnalysisSettings(stateDir, next as any); sendJson(res, 200, { settings: toPublicSettings(next as any, packageDir) }); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return; }
+    if (testRoute && method === "POST") {
+      const id = decodeURIComponent(testRoute[1]);
+      const settings = loadAnalysisSettings(packageDir, stateDir);
+      const provider = settings.providers.find((item) => item.id === id);
+      if (!provider) { sendJson(res, 404, { error: `provider "${id}" does not exist` }); return; }
+      const key = resolveProviderApiKey(provider, packageDir);
+      if (!key) { sendJson(res, 200, { ok: false, error: "provider API key is not set" }); return; }
+      try {
+        const reply = await callProvider(provider, key, [{ role: "system", content: "Reply with the single word OK" }, { role: "user", content: "ping" }]);
+        sendJson(res, 200, { ok: true, reply });
+      } catch (error) {
+        sendJson(res, 200, { ok: false, error: errMsg(error) });
+      }
+      return;
+    }
+    if (path === "/api/analysis/settings" && method === "PUT") { try { const body = await readBody(req) as Record<string, unknown>; const current = loadAnalysisSettings(packageDir, stateDir); const next = validateSettings({ ...current, ...body }); saveAnalysisSettings(stateDir, next); sendJson(res, 200, { settings: toPublicSettings(next, packageDir) }); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return; }
     const markRoute = /^\/api\/analysis\/([^/]+)\/mark-unrecommended$/i.exec(path);
     if (markRoute && method === "POST") { const settings = loadAnalysisSettings(packageDir, stateDir); const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((item) => item.id === decodeURIComponent(markRoute[1])); if (!meta || !meta.db.exists) { sendJson(res, 404, { error: "DB not found" }); return; } const count = bulkMarkBelowThreshold(meta.db.path, settings.recommendedThreshold); broadcast("db", {}); sendJson(res, 200, { ok: true, count }); return; }
 

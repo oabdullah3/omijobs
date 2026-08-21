@@ -46,6 +46,12 @@ export interface AnalysisSettingsPublic {
     name: string;
     baseUrl: string;
     model: string;
+    apiKeyEnv: string;
+    temperature: number;
+    maxTokens: number;
+    timeoutMs: number;
+    retries: number;
+    retryBackoffMs: number;
     apiKeyStatus: "set" | "unset";
   }[];
 }

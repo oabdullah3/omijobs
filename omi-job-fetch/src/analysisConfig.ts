@@ -86,7 +86,28 @@ export function saveAnalysisSettings(stateDir: string, settings: AnalysisSetting
 }
 
 export function toPublicSettings(settings: AnalysisSettings, packageDir = ""): AnalysisSettingsPublic {
-  return { systemPrompt: settings.systemPrompt, recommendedThreshold: settings.recommendedThreshold, descriptionMaxChars: settings.descriptionMaxChars, enabledProvider: settings.enabledProvider, providers: settings.providers.map((provider) => ({ id: provider.id, name: provider.name, baseUrl: provider.baseUrl, model: provider.model, apiKeyStatus: providerApiKeyStatus(provider, packageDir) })) };
+  return {
+    systemPrompt: settings.systemPrompt,
+    recommendedThreshold: settings.recommendedThreshold,
+    descriptionMaxChars: settings.descriptionMaxChars,
+    enabledProvider: settings.enabledProvider,
+    // apiKeyEnv is the env-var *name* (not the secret value), and the numeric
+    // fields are needed to pre-fill the onboarding/edit form. The key value
+    // itself never leaves write-only storage.
+    providers: settings.providers.map((provider) => ({
+      id: provider.id,
+      name: provider.name,
+      baseUrl: provider.baseUrl,
+      model: provider.model,
+      apiKeyEnv: provider.apiKeyEnv,
+      temperature: provider.temperature,
+      maxTokens: provider.maxTokens,
+      timeoutMs: provider.timeoutMs,
+      retries: provider.retries,
+      retryBackoffMs: provider.retryBackoffMs,
+      apiKeyStatus: providerApiKeyStatus(provider, packageDir),
+    })),
+  };
 }
 
 export function addProvider(settings: AnalysisSettings, provider: AnalysisProviderConfig): AnalysisSettings {
