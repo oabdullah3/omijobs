@@ -26,7 +26,7 @@ async function refresh() {
       const d = state.data;
       const children = [];
       if (d.error) children.push(el("div", { class: "callout warn" }, el("p", {}, esc(d.error))));
-      children.push(...d.jobs.map((j) => jobCard(j, d.gateway.running)));
+      children.push(...d.jobs.filter((j) => j.kind !== "analysis").map((j) => jobCard(j, d.gateway.running)));
       jobs.replaceChildren(...children);
     }
     loadLog();
@@ -238,9 +238,19 @@ export async function render() {
     root.append(
       el("div", { id: "cron-gateway" }, gatewayHeader(), gatewayLog()),
       el("div", { id: "cron-jobs" }, ...jobChildren),
+      el("div", { id: "analysis-crons" }, analysisCronSection(d.jobs.filter((j) => j.kind === "analysis"))),
       el("div", { id: "cron-add" }, addCronCard()));
   } else {
     root.append(el("div", { class: "empty" }, "Loading…"));
   }
   return root;
+}
+
+function analysisCronSection(jobs) {
+  const name = el("input", { class: "input", placeholder: "name" });
+  const schedule = el("input", { class: "input", placeholder: "every 6 hours" });
+  const db = el("input", { class: "input", placeholder: "DB key, e.g. base" });
+  const form = el("form", { class: "form-grid" }, name, schedule, db, el("button", { class: "btn btn-primary", type: "submit" }, "Add analysis cron"));
+  form.addEventListener("submit", async (event) => { event.preventDefault(); try { await api.post("/api/cron/add-analysis", { name: name.value, schedule: schedule.value, db: db.value }); toast("Analysis cron added", "good"); refresh(); } catch (error) { toast(error.message, "warn"); } });
+  return el("div", {}, el("p", { class: "eyebrow" }, "Analysis crons"), ...jobs.map((job) => el("div", { class: "card" }, el("div", { class: "toolbar" }, el("h3", {}, esc(job.id)), el("span", { class: "badge" }, "analysis")), el("p", { class: "hint" }, `${esc(job.dbKey ?? "")} · ${esc(job.schedule)} · last: ${esc(job.lastStatus ?? "never")}`))), el("div", { class: "card" }, form));
 }

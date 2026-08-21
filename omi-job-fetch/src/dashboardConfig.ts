@@ -15,6 +15,7 @@ export interface ConfigMeta {
   queries: string[];
   enabledPortals: string[];
   outputDir: string;
+  retentionDays?: number;
   db: ConfigDb;
 }
 export interface ConfigListInput { packageDir: string; cronFile?: string; }
@@ -25,6 +26,8 @@ export interface FriendlyPatch {
   dbEnabled?: boolean;
   baseConfig?: RunConfig;
   id?: string;                // cron slug — names the <id>.db for "separate" storage
+  stripRetention?: boolean;
+  retentionDays?: number;
 }
 
 /**
@@ -34,6 +37,13 @@ export interface FriendlyPatch {
  */
 export const BASE_CONFIG_REL = "dashboard.configs/realtime/config.json";
 export const CRON_CONFIG_DIR = "dashboard.configs/cron";
+
+export function resolveBaseRetention(packageDir: string): number | undefined {
+  const path = resolve(packageDir, BASE_CONFIG_REL);
+  if (!existsSync(path)) return undefined;
+  const config = readConfig(path);
+  return typeof config.db?.retentionDays === "number" ? config.db.retentionDays : undefined;
+}
 
 /** Lowercase slug for cron ids and separate-storage DB filenames. */
 export function slugify(value: string): string {
@@ -95,6 +105,7 @@ export function configMeta(id: string, kind: "base" | "cron", path: string, rel:
     queries: normalizeQueries(config.global?.queries),
     enabledPortals: [...(config.portals?.enabled ?? []), ...(config.ats?.enabled ?? [])],
     outputDir: config.outputDir ?? "output",
+    retentionDays: config.db?.retentionDays,
     db: {
       enabled: config.db?.enabled !== false,
       file: config.db?.file ?? "jobs.db",
@@ -116,6 +127,7 @@ export function discoverConfigs(input: ConfigListInput): ConfigMeta[] {
   }
   if (input.cronFile && existsSync(input.cronFile)) {
     for (const job of loadCron(input.cronFile).jobs) {
+      if (job.kind === "analysis" || !job.config) continue;
       const path = resolve(dirname(input.cronFile), job.config);
       if (!existsSync(path)) continue;
       try {
@@ -156,5 +168,10 @@ export function applyFriendlyUpdate(config: RunConfig, patch: FriendlyPatch): Ru
     }
   }
   if (patch.dbEnabled !== undefined) out = { ...out, db: { ...out.db, enabled: patch.dbEnabled } };
+  if (patch.retentionDays !== undefined) out = { ...out, db: { ...out.db, retentionDays: patch.retentionDays } };
+  if (patch.stripRetention && out.db) {
+    const { retentionDays: _retentionDays, ...db } = out.db;
+    out = { ...out, db };
+  }
   return out;
 }

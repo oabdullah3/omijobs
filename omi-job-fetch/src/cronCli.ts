@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { ACCEPTED_SCHEDULES, defaultSpawnJob, loadCron, outcomeText, parseSchedule, runGateway, saveCron } from "./cron.js";
 import { autostartStatus, registerAutostart, unregisterAutostart } from "./platform.js";
 import type { CronFile, CronJob } from "./types.js";
+import { discoverConfigs } from "./dashboardConfig.js";
 
 const PACKAGE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const STATE_DIR = join(homedir(), ".omijobs");
@@ -114,6 +115,13 @@ function parseAddArgs(argv: string[]): AddArgs {
   return args;
 }
 
+function parseAnalysisAddArgs(argv: string[]): { name: string; schedule: string; db: string } {
+  const values: Record<string, string> = {};
+  for (let i = 0; i < argv.length; i++) { const key = argv[i].replace(/^--/, ""); values[key] = argv[++i] ?? ""; }
+  if (!values.name || !values.schedule || !values.db) throw new Error("cron add-analysis requires --name, --schedule, and --db");
+  return { name: values.name, schedule: values.schedule, db: values.db };
+}
+
 async function cmdAdd(argv: string[], cronFile: string): Promise<number> {
   const args = parseAddArgs(argv);
   parseSchedule(args.schedule); // throws with the accepted forms on mismatch
@@ -126,6 +134,7 @@ async function cmdAdd(argv: string[], cronFile: string): Promise<number> {
   const id = uniqueId(cron, args.name ? slugify(args.name) : slugify(args.config.replace(/\.json$/, "")));
   cron.jobs.push({
     id,
+    kind: "run",
     config: args.config,
     schedule: args.schedule,
     parsed: parseSchedule(args.schedule),
@@ -137,6 +146,16 @@ async function cmdAdd(argv: string[], cronFile: string): Promise<number> {
   console.log(`Added cron job ${id} — every scheduled run: omijobs run --config ${args.config} (${args.schedule})`);
   console.log(`File: ${cronFile}`);
   return 0;
+}
+
+async function cmdAddAnalysis(argv: string[], cronFile: string): Promise<number> {
+  const args = parseAnalysisAddArgs(argv); parseSchedule(args.schedule);
+  const packageDir = resolve(dirname(cronFile));
+  const valid = discoverConfigs({ packageDir, cronFile }).some((meta) => meta.id === args.db);
+  if (!valid) { console.error(`Error: no DB config "${args.db}"`); return 1; }
+  const cron = loadCron(cronFile); const id = uniqueId(cron, slugify(args.name));
+  cron.jobs.push({ id, kind: "analysis", dbKey: args.db, schedule: args.schedule, parsed: parseSchedule(args.schedule), enabled: true, lastRun: null, lastStatus: null });
+  saveCron(cronFile, cron); console.log(`Added analysis cron job ${id} for ${args.db}`); return 0;
 }
 
 async function cmdList(cronFile: string): Promise<number> {
@@ -346,7 +365,7 @@ async function cmdRun(cronFile: string): Promise<number> {
   let failed = 0;
   await Promise.all(
     jobs.map(async (job: CronJob) => {
-      const configPath = resolve(dirname(cronFile), job.config);
+      const configPath = job.config ? resolve(dirname(cronFile), job.config) : "";
       if (!existsSync(configPath)) {
         console.log(`  ${job.id} — missing config ${job.config}`);
         failed++;
@@ -378,6 +397,8 @@ export async function runCronCommand(argv: string[]): Promise<number> {
       return 0;
     case "add":
       return cmdAdd(rest, cronFile);
+    case "add-analysis":
+      return cmdAddAnalysis(rest, cronFile);
     case "list":
       return cmdList(cronFile);
     case "enable":

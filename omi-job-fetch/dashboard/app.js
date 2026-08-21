@@ -4,9 +4,10 @@ import * as cron from "./views/cron.js";
 import * as config from "./views/config.js";
 import * as docs from "./views/docs.js";
 import * as settings from "./views/settings.js";
+import * as analysis from "./views/analysis.js";
 
-const ROUTES = { jobs, cron, config, docs, settings };
-const NAV = [["jobs", "Jobs"], ["cron", "Cron"], ["config", "Config"], ["docs", "Docs"]];
+const ROUTES = { jobs, cron, config, docs, settings, analysis };
+const NAV = [["jobs", "Jobs"], ["analysis", "Analysis"], ["cron", "Cron"], ["config", "Config"], ["docs", "Docs"]];
 const $ = (id) => document.getElementById(id);
 
 // --- DOM helpers (exported for views) ---

@@ -139,7 +139,9 @@ export function loadCron(file: string): CronFile {
   for (const entry of jobsRaw) {
     const job = entry as Record<string, unknown>;
     if (typeof job.id !== "string" || job.id === "") throw new Error(`cron.json: every job needs a non-empty "id"`);
-    if (typeof job.config !== "string" || job.config === "") throw new Error(`cron.json job "${job.id}" needs "config"`);
+    const kind = job.kind === "analysis" ? "analysis" : "run";
+    if (kind === "run" && (typeof job.config !== "string" || job.config === "")) throw new Error(`cron.json job "${job.id}" needs "config"`);
+    if (kind === "analysis" && (typeof job.dbKey !== "string" || job.dbKey === "")) throw new Error(`cron.json analysis job "${job.id}" needs "dbKey"`);
     if (typeof job.schedule !== "string" || job.schedule === "") throw new Error(`cron.json job "${job.id}" needs "schedule"`);
     let parsed: CronSchedule;
     try {
@@ -149,7 +151,9 @@ export function loadCron(file: string): CronFile {
     }
     jobs.push({
       id: job.id,
-      config: job.config,
+      kind,
+      ...(typeof job.config === "string" ? { config: job.config } : {}),
+      ...(typeof job.dbKey === "string" ? { dbKey: job.dbKey } : {}),
       schedule: job.schedule,
       parsed,
       enabled: job.enabled === undefined ? true : Boolean(job.enabled),
@@ -164,9 +168,11 @@ export function loadCron(file: string): CronFile {
 export function saveCron(file: string, cron: CronFile): void {
   const stored = {
     paused: cron.paused,
-    jobs: cron.jobs.map(({ id, config, schedule, enabled, lastRun, lastStatus }) => ({
+    jobs: cron.jobs.map(({ id, kind, config, dbKey, schedule, enabled, lastRun, lastStatus }) => ({
       id,
-      config,
+      kind,
+      ...(config ? { config } : {}),
+      ...(dbKey ? { dbKey } : {}),
       schedule,
       enabled,
       lastRun,
@@ -196,13 +202,16 @@ export function defaultSpawnJob(cliPath: string, stateDir: string) {
   return (job: CronJob, configPath: string): Promise<SpawnOutcome> => {
     const runsDir = resolve(stateDir, "runs");
     mkdirSync(runsDir, { recursive: true });
-    const progressFile = resolve(runsDir, `${job.id}.log`);
-    const stopFile = resolve(runsDir, `${job.id}.stop`);
-    const markerFile = resolve(runsDir, `${job.id}.running`);
+    const analysis = job.kind === "analysis";
+    const dir = analysis ? resolve(stateDir, "analysis") : runsDir;
+    const progressFile = resolve(dir, `${job.id}.log`);
+    const stopFile = resolve(dir, `${job.id}.stop`);
+    const markerFile = analysis ? resolve(dir, "active") : resolve(dir, `${job.id}.running`);
     rmSync(stopFile, { force: true });
     rmSync(markerFile, { force: true });
     return new Promise((resolveOutcome) => {
-      const child = spawn(process.execPath, [cliPath, "run", "--config", configPath], {
+      const args = analysis ? [cliPath, "analyze", "run", job.dbKey ?? ""] : [cliPath, "run", "--config", configPath];
+      const child = spawn(process.execPath, args, {
         env: {
           ...process.env,
           OMI_JOB_FETCH_TRIGGER: "cron",
@@ -310,8 +319,8 @@ export async function runGateway(options: GatewayOptions): Promise<void> {
           if (!job.enabled) continue;
           if (inFlight.has(job.id)) continue;
           if (!isDue(job, now)) continue;
-          const configPath = resolve(dirname(options.cronFile), job.config);
-          if (!existsSync(configPath)) {
+          const configPath = job.kind === "run" && job.config ? resolve(dirname(options.cronFile), job.config) : "";
+          if (job.kind === "run" && !existsSync(configPath)) {
             await writeCron((c) => {
               const target = c.jobs.find((j) => j.id === job.id);
               if (target) target.lastStatus = `missing config: ${job.config}`;
@@ -325,7 +334,7 @@ export async function runGateway(options: GatewayOptions): Promise<void> {
             if (target) target.lastStatus = "running";
           });
           inFlight.add(job.id);
-          log(`[${job.id}] spawn ${job.config} (${job.schedule})`);
+          log(`[${job.id}] spawn ${job.kind === "analysis" ? `analysis ${job.dbKey}` : job.config} (${job.schedule})`);
           spawnJob(job, configPath)
             .then((outcome) => {
               inFlight.delete(job.id);

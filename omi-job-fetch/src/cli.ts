@@ -3,7 +3,8 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileS
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runCronCommand } from "./cronCli.js";
-import { BASE_CONFIG_REL } from "./dashboardConfig.js";
+import { runAnalyzeCommand } from "./analysisCli.js";
+import { BASE_CONFIG_REL, resolveBaseRetention } from "./dashboardConfig.js";
 import { startDashboard } from "./dashboardServer.js";
 import { adapters } from "./registry.js";
 import { exitCode, normalizeQueries, runPipeline } from "./runtime.js";
@@ -367,6 +368,7 @@ async function runCommand(argv: string[]): Promise<number> {
 
     const stop = createStopWatch(process.env.OMI_JOB_FETCH_STOP_FILE);
     const { jobsFile, summary } = await runPipeline(config, adapters, {
+      retentionDays: resolveBaseRetention(PACKAGE_DIR),
       ...(trigger ? { trigger } : {}),
       aborted: stop.aborted,
       onAdapterStart: (index, total, adapterId, query) => {
@@ -422,6 +424,9 @@ async function main(): Promise<void> {
   let code: number;
   if (argv[0] === "cron") {
     code = await runCronCommand(argv.slice(1));
+  } else if (argv[0] === "analyze") {
+    try { code = await runAnalyzeCommand(argv.slice(1)); }
+    catch (error) { console.error(`Error: ${error instanceof Error ? error.message : String(error)}`); code = 1; }
   } else if (argv[0] === "run") {
     code = await runCommand(argv.slice(1));
   } else if (argv[0] === "dashboard") {

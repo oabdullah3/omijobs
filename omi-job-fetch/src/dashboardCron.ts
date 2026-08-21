@@ -7,6 +7,8 @@ import type { CronSchedule } from "./types.js";
 
 export interface CronJobState {
   id: string;
+  kind: "run" | "analysis";
+  dbKey?: string;
   config: string;
   configPath: string;
   schedule: string;
@@ -86,8 +88,10 @@ export function getCronState(input: CronStateInput): CronGatewayState {
   const now = input.now ?? new Date();
   const jobs = cron.jobs.map((job) => ({
     id: job.id,
-    config: job.config,
-    configPath: resolve(resolve(input.cronFile, ".."), job.config),
+    kind: job.kind,
+    ...(job.dbKey ? { dbKey: job.dbKey } : {}),
+    config: job.config ?? "",
+    configPath: job.config ? resolve(resolve(input.cronFile, ".."), job.config) : "",
     schedule: job.schedule,
     enabled: job.enabled,
     lastRun: job.lastRun,

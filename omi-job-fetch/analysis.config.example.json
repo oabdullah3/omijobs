@@ -1,0 +1,20 @@
+{
+  "systemPrompt": "You are a job analysis assistant that helps match candidates to job opportunities.",
+  "recommendedThreshold": 5,
+  "descriptionMaxChars": 4000,
+  "enabledProvider": null,
+  "providers": [
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "model": "openrouter/auto",
+      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "temperature": 0.2,
+      "maxTokens": 400,
+      "timeoutMs": 60000,
+      "retries": 3,
+      "retryBackoffMs": 2000
+    }
+  ]
+}

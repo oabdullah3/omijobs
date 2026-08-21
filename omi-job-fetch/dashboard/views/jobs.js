@@ -9,6 +9,7 @@ const state = {
   q: "",
   sort: "posted_at",
   dir: "desc",
+  recommended: false,
   list: null,
   info: null,
   timer: null,
@@ -25,7 +26,7 @@ async function refresh() {
     await refreshSources();
     state.info = state.sources.find((s) => s.key === state.key) ?? null;
     state.list = state.key
-      ? await api.get(`/api/dbs/${state.key}/jobs?status=${state.status}&q=${encodeURIComponent(state.q)}&sort=${state.sort}&dir=${state.dir}&limit=500`)
+      ? await api.get(`/api/dbs/${state.key}/jobs?status=${state.status}&q=${encodeURIComponent(state.q)}&sort=${state.sort}&dir=${state.dir}&recommended=${state.recommended ? "1" : "0"}&limit=500`)
       : null;
     const err = document.getElementById("jobs-error");
     if (err) err.replaceChildren(...(state.info?.error ? [errorCallout(state.info.error)] : []));
@@ -67,7 +68,10 @@ async function openDetail(sig) {
   push("Posted", fmtTime(detail.postedAt));
   push("Source", job.source);
   push("Apply URL", job.apply_url ? el("a", { href: job.apply_url, target: "_blank", rel: "noopener" }, job.apply_url) : null);
-  if (detail.analysis) rows.push(el("dt", {}, "Analysis"), el("dd", {}, el("pre", { class: "codeblock" }, JSON.stringify(detail.analysis, null, 2))));
+  if (detail.analysis) {
+    const verdict = detail.analysis.score !== undefined && detail.analysis.reason ? `${detail.analysis.score}/10 — ${detail.analysis.reason}` : JSON.stringify(detail.analysis, null, 2);
+    rows.push(el("dt", {}, "Analysis"), el("dd", {}, verdict));
+  }
   if (job.description) rows.push(el("dt", {}, "Description"), el("dd", {}, job.description));
   const modal = el("div", { class: "modal" },
     el("h3", {}, esc(job.title || sig)),
@@ -112,7 +116,7 @@ function renderTable() {
   if (!list) return el("div", { class: "empty" }, "No source selected.");
   if (list.total === 0) return el("div", { class: "empty" }, "No jobs match the current filter.");
   const head = el("tr", {},
-    ...(["posted_at", "title", "company", "location", "status"].map((key) =>
+    ...(["posted_at", "title", "company", "location", "score", "status"].map((key) =>
       el("th", { onclick: () => { if (state.sort === key) state.dir = state.dir === "desc" ? "asc" : "desc"; else { state.sort = key; state.dir = "desc"; } refresh(); } },
         `${key}${state.sort === key ? (state.dir === "desc" ? " ↓" : " ↑") : ""}`))),
   );
@@ -122,6 +126,7 @@ function renderTable() {
       el("td", {}, el("span", { class: "t-title" }, esc(row.job.title || row.signature.slice(0, 8)))),
       el("td", {}, esc(row.job.company ?? "")),
       el("td", {}, esc(row.job.location ?? "")),
+      el("td", {}, row.score === null ? "—" : String(row.score)),
       el("td", {}, chip(row.status))));
   return el("div", { class: "table-wrap" },
     el("table", { class: "table" },
@@ -146,6 +151,7 @@ function renderBody() {
   },
     el("option", { value: "" }, "any status"),
     ...STATUSES.map((s) => el("option", { value: s }, s)));
+  const recommended = el("label", {}, el("input", { type: "checkbox", checked: state.recommended, onchange: (e) => { state.recommended = e.target.checked; refresh(); } }), " AI recommended");
   const search = el("input", {
     class: "input",
     placeholder: "search title / company / location…",
@@ -158,7 +164,7 @@ function renderBody() {
   });
   return el("div", { id: "jobs-root" },
     el("div", { id: "jobs-error" }),
-    el("div", { class: "toolbar" }, source, statusFilter, search),
+    el("div", { class: "toolbar" }, source, statusFilter, recommended, search),
     el("div", { id: "jobs-body" }, renderTicker(), renderTable()));
 }
 

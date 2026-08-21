@@ -82,6 +82,7 @@ function editModal(meta) {
   const separate = el("input", { type: "radio", name: "storage", value: "separate", checked: meta.db.file.endsWith(".db") && meta.db.file !== "jobs.db" && meta.db.enabled });
   const custom = el("input", { type: "radio", name: "storage", value: "custom", checked: !shared.checked && !separate.checked });
   const dbEnabled = el("input", { type: "checkbox", checked: meta.db.enabled });
+  const retention = el("input", { class: "input", type: "number", min: 0, value: meta.retentionDays ?? 30 });
   const raw = el("textarea", { class: "input codeblock", rows: 10, spellcheck: "false" });
   raw.value = "loading…";
   const modal = el("div", { class: "modal" },
@@ -98,6 +99,7 @@ function editModal(meta) {
           el("label", {}, separate, " separate <name>.db "),
           el("label", {}, custom, " custom (advanced)"))) : null,
       el("div", { class: "field" }, el("label", {}, "Aggregate DB"), el("label", {}, dbEnabled, " enabled (dashboard depends on it)")),
+      meta.kind === "base" ? el("div", { class: "field" }, el("label", {}, "Retention (days)"), retention, el("div", { class: "hint" }, "0 keeps everything; cron configs inherit this value.")) : null,
       el("div", { class: "field" }, el("label", {}, "Advanced (raw JSON)"), raw,
         el("div", { class: "hint" }, "The full config file — edited here and applied verbatim via Apply JSON.")),
     ),
@@ -122,6 +124,7 @@ function editModal(meta) {
     const willDisable = !dbEnabled.checked;
     if (willDisable && !confirm("Disabling the aggregate DB means the dashboard Jobs page will not show results from this config. Continue?")) return;
     const payload = { queries: queries.value.split(",").map((s) => s.trim()).filter(Boolean), dbEnabled: dbEnabled.checked };
+    if (meta.kind === "base") payload.retentionDays = Number(retention.value);
     if (meta.kind === "cron") {
       payload.storage = document.querySelector(`input[name=storage]:checked`)?.value;
     }

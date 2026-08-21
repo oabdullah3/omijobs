@@ -16,6 +16,7 @@ export interface RunResult {
 
 export interface RunOptions {
   outputDir?: string;
+  retentionDays?: number;
   now?: Date;
   /** Set to "cron" when the cron gateway spawned this run; recorded in run.json. */
   trigger?: string;
@@ -215,7 +216,7 @@ export async function runPipeline(
         deduped,
         dedupFields,
         now,
-        config.db?.retentionDays ?? DEFAULT_RETENTION_DAYS,
+        options.retentionDays ?? config.db?.retentionDays ?? DEFAULT_RETENTION_DAYS,
       );
     } catch (error) {
       dbError = error instanceof Error ? error.message : String(error);

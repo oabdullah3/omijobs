@@ -14,6 +14,49 @@ export const OUTPUT_KEYS = [
   "source",
 ] as const;
 
+/** Analysis configuration interfaces (see analysisConfig.ts). */
+export interface AnalysisProviderConfig {
+  id: string;
+  name: string;
+  baseUrl: string;
+  model: string;
+  apiKeyEnv: string;
+  temperature: number;
+  maxTokens: number;
+  timeoutMs: number;
+  retries: number;
+  retryBackoffMs: number;
+}
+
+export interface AnalysisSettings {
+  systemPrompt: string;
+  recommendedThreshold: number;
+  descriptionMaxChars: number;
+  enabledProvider: string | null;
+  providers: AnalysisProviderConfig[];
+}
+
+export interface AnalysisSettingsPublic {
+  systemPrompt: string;
+  recommendedThreshold: number;
+  descriptionMaxChars: number;
+  enabledProvider: string | null;
+  providers: {
+    id: string;
+    name: string;
+    baseUrl: string;
+    model: string;
+    apiKeyStatus: "set" | "unset";
+  }[];
+}
+
+export enum AnalysisRunStatus {
+  Pending = "pending",
+  Running = "running",
+  Completed = "completed",
+  Failed = "failed",
+}
+
 export type OutputKey = (typeof OUTPUT_KEYS)[number];
 
 /** Search-param record passed to adapters (query, location, …). */
@@ -160,8 +203,10 @@ export type CronSchedule =
 
 export interface CronJob {
   id: string;
+  kind: "run" | "analysis";
   /** Config path passed to `--config` when the job's run is spawned. */
-  config: string;
+  config?: string;
+  dbKey?: string;
   /** Raw human-friendly schedule string as written in cron.json (validated on load). */
   schedule: string;
   /** Parsed schedule; persisted for display/tools, recomputed from `schedule` on load. */
