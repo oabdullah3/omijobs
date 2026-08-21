@@ -96,7 +96,7 @@ function splitEnabled(ids: string[]): { portals: string[]; ats: string[] } {
 
 /** Build a ConfigMeta from a loaded config. */
 export function configMeta(id: string, kind: "base" | "cron", path: string, rel: string, config: RunConfig): ConfigMeta {
-  const dbPath = resolveDbPath(config);
+  const dbPath = dbFile(config, resolve(dirname(path), config.outputDir ?? "output"));
   return {
     id,
     kind,

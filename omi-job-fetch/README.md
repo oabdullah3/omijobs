@@ -16,11 +16,13 @@ config reference is [config.guide.md](config.guide.md).
 
 ## Your first run — under a minute
 
-**1. Set your search terms.** Copy the starter config and edit the queries:
+**1. Set your search terms.** The base config is seeded on first run: the shipped
+`config.base.json` is copied into `~/.omijobs/dashboard.configs/realtime/config.json`
+(an existing file is never overwritten). Edit that file's `global.queries`:
 
 ```bash
-cp config.example.json dashboard.configs/realtime/config.json
-# then edit dashboard.configs/realtime/config.json → "global": { "queries": ["finance intern"] }
+node dist/cli.js run    # first run seeds the config
+# then edit ~/.omijobs/dashboard.configs/realtime/config.json → "global": { "queries": ["finance intern"] }
 ```
 
 The query list is the whole search: each query runs against every enabled portal, and
@@ -63,7 +65,7 @@ omijobs cron stop         # stop the gateway and remove auto-start
 ```
 
 Schedules are human-friendly: `every 30m`, `every 6 hours`, `daily at 09:00`,
-`weekdays at 18:30`, `monday at 09:00`. Jobs live in `cron.json` next to `package.json`;
+`weekdays at 18:30`, `monday at 09:00`. Jobs live in `~/.omijobs/cron.json`;
 `omijobs cron enable/disable <id>` and `pause/resume` turn jobs on/off individually or
 globally. A cron-spawned run marks itself in its `run.json` (`"trigger": "cron"`), so
 scheduled results are distinguishable from manual ones.
@@ -78,7 +80,7 @@ automatically. Turned off by default.
 ## AI analysis
 
 The dashboard Analysis tab and the CLI score aggregate DB rows through any
-OpenAI-compatible provider. Settings are seeded from `analysis.config.example.json`
+OpenAI-compatible provider. Settings are seeded from `analysis.config.base.json`
 into `~/.omijobs/analysis.json`; API keys are write-only and resolve from the
 process environment before the package `.env` file.
 

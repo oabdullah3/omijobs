@@ -7,6 +7,7 @@ import { ACCEPTED_SCHEDULES, defaultSpawnJob, loadCron, outcomeText, parseSchedu
 import { autostartStatus, registerAutostart, unregisterAutostart } from "./platform.js";
 import type { CronFile, CronJob } from "./types.js";
 import { discoverConfigs } from "./dashboardConfig.js";
+import { ensureUserFiles, userPaths } from "./userPaths.js";
 
 const PACKAGE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const STATE_DIR = join(homedir(), ".omijobs");
@@ -16,7 +17,7 @@ const LOG_FILE = join(STATE_DIR, "cron.log");
 const CLI_PATH = resolve(PACKAGE_DIR, "dist", "cli.js");
 
 function resolveCronFile(explicit?: string): string {
-  return explicit ? resolve(explicit) : resolve(PACKAGE_DIR, "cron.json");
+  return explicit ? resolve(explicit) : ensureUserFiles(PACKAGE_DIR, STATE_DIR).cronFile;
 }
 
 function sleep(ms: number): Promise<void> {

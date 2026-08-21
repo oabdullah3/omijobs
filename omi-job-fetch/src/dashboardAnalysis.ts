@@ -12,14 +12,14 @@ function uniqueDbs(metas: ConfigMeta[]): Array<{ path: string; owners: ConfigMet
   for (const meta of metas) map.set(meta.db.path, [...(map.get(meta.db.path) ?? []), meta]);
   return [...map.entries()].map(([path, owners]) => ({ path, owners }));
 }
-export interface DashboardAnalysisOptions { packageDir: string; cronFile: string; stateDir: string; now?: () => Date; }
+export interface DashboardAnalysisOptions { packageDir: string; configDir?: string; cronFile: string; stateDir: string; now?: () => Date; }
 export function getAnalysisDashboardState(options: DashboardAnalysisOptions): any {
   const settings = loadAnalysisSettings(options.packageDir, options.stateDir);
-  const metas = discoverConfigs({ packageDir: options.packageDir, cronFile: options.cronFile });
+  const metas = discoverConfigs({ packageDir: options.configDir ?? options.packageDir, cronFile: options.cronFile });
   const state = resolveAnalysisState(options.stateDir);
   const active = analysisStatus(options.packageDir, options.stateDir) as any;
   const runningDb = active.active?.dbPath ?? null;
-  const retentionDays = resolveBaseRetention(options.packageDir) ?? DEFAULT_RETENTION_DAYS;
+  const retentionDays = resolveBaseRetention(options.stateDir) ?? DEFAULT_RETENTION_DAYS;
   const dbs = uniqueDbs(metas).map(({ path, owners }) => {
     const key = owners[0].id;
     const exists = existsSync(path);

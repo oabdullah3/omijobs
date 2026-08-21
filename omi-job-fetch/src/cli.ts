@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { runCronCommand } from "./cronCli.js";
 import { runAnalyzeCommand } from "./analysisCli.js";
-import { BASE_CONFIG_REL, resolveBaseRetention } from "./dashboardConfig.js";
+import { resolveBaseRetention } from "./dashboardConfig.js";
 import { startDashboard } from "./dashboardServer.js";
 import { adapters } from "./registry.js";
 import { exitCode, normalizeQueries, runPipeline } from "./runtime.js";
 import type { AdapterStatus, DedupedCase, DroppedCase, RunConfig, RunSummary } from "./types.js";
+import { ensureUserFiles } from "./userPaths.js";
 
 const PACKAGE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const USER_STATE_DIR = resolve(homedir(), ".omijobs");
 
 export interface ParsedArgs {
   configPath?: string;
@@ -87,7 +90,7 @@ async function runDashboardCommand(argv: string[]): Promise<number> {
 
 /** Locate + parse config.json: explicit --config path, else the fixed realtime config. */
 export function findConfig(explicit?: string): { path: string; config: RunConfig } {
-  const path = explicit ? resolve(explicit) : resolve(PACKAGE_DIR, ...BASE_CONFIG_REL.split("/"));
+  const path = explicit ? resolve(explicit) : ensureUserFiles(PACKAGE_DIR, USER_STATE_DIR).baseConfig;
   if (!existsSync(path)) {
     throw new Error(`No config.json at ${path}. Pass --config <path> to point at a different file.`);
   }
@@ -103,10 +106,10 @@ Commands:
   dashboard [--port N]    Open the web dashboard (default port 5211)
 
 Options:
-  --config <path>  Path to config.json (default: dashboard.configs/realtime/config.json)
+  --config <path>  Path to config.json (default: ~/.omijobs/dashboard.configs/realtime/config.json, auto-seeded from config.base.json)
   --help           Show this help
 
-Queries, enabled adapters, and per-adapter search params all live in dashboard.configs/realtime/config.json — see config.guide.md.
+On first run the base config is seeded from config.base.json into ~/.omijobs/dashboard.configs/realtime/config.json — see config.guide.md.
 Cron jobs, schedules, and the gateway: omijobs cron --help`);
 }
 
@@ -345,7 +348,8 @@ async function runCommand(argv: string[]): Promise<number> {
   // otherwise skip straight to process.exit(1) in main()).
   const marker = createRunMarker();
   try {
-    const { config } = findConfig(parsed.configPath);
+    const found = findConfig(parsed.configPath);
+    const { config } = found;
     const queries = normalizeQueries(config.global?.queries);
     const multiQuery = queries.length > 1;
     const trigger = process.env.OMI_JOB_FETCH_TRIGGER;
@@ -368,7 +372,8 @@ async function runCommand(argv: string[]): Promise<number> {
 
     const stop = createStopWatch(process.env.OMI_JOB_FETCH_STOP_FILE);
     const { jobsFile, summary } = await runPipeline(config, adapters, {
-      retentionDays: resolveBaseRetention(PACKAGE_DIR),
+      outputDir: resolve(dirname(found.path), config.outputDir ?? "output"),
+      retentionDays: resolveBaseRetention(parsed.configPath ? dirname(found.path) : USER_STATE_DIR),
       ...(trigger ? { trigger } : {}),
       aborted: stop.aborted,
       onAdapterStart: (index, total, adapterId, query) => {
@@ -439,7 +444,7 @@ async function main(): Promise<void> {
 }
 
 // Only run when executed directly (e.g. `node dist/cli.js`), not when imported by tests.
-const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+const isMain = process.argv[1] !== undefined && /(?:^|[\\/])cli\.js$/i.test(process.argv[1]);
 if (isMain) {
   main().catch((error) => {
     console.error(`Fatal: ${error instanceof Error ? error.message : String(error)}`);

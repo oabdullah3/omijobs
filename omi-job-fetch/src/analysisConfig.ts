@@ -70,8 +70,8 @@ export function providerApiKeyStatus(provider: AnalysisProviderConfig, packageDi
 export function loadAnalysisSettings(packageDir: string, stateDir: string): AnalysisSettings {
   const statePath = join(stateDir, SETTINGS_FILE);
   if (existsSync(statePath)) return validateSettings(JSON.parse(readFileSync(statePath, "utf8")));
-  const examplePath = join(packageDir, "analysis.config.example.json");
-  const settings = existsSync(examplePath) ? validateSettings(JSON.parse(readFileSync(examplePath, "utf8"))) : validateSettings({ systemPrompt: "You are a job-matching evaluator.", recommendedThreshold: 5, descriptionMaxChars: 4000, enabledProvider: null, providers: [] });
+  const basePath = join(packageDir, "analysis.config.base.json");
+  const settings = existsSync(basePath) ? validateSettings(JSON.parse(readFileSync(basePath, "utf8"))) : validateSettings({ systemPrompt: "You are a job-matching evaluator.", recommendedThreshold: 5, descriptionMaxChars: 4000, enabledProvider: null, providers: [] });
   saveAnalysisSettings(stateDir, settings);
   return settings;
 }

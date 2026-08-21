@@ -1,10 +1,14 @@
 {
   "name": "omijobs",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "description": "Deterministic programmatic job retrieval from aggregator portals and ATS backends",
   "type": "module",
-  "bin": { "omijobs": "./dist/cli.js" },
-  "engines": { "node": ">=24" },
+  "bin": {
+    "omijobs": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
@@ -14,13 +18,17 @@
   "files": [
     "dist/**",
     "dashboard/**",
-    "analysis.config.example.json",
-    "config.example.json",
-    "cron.example.json",
+    "config.base.json",
+    "analysis.config.base.json",
     "README.md",
     "config.guide.md"
   ],
-  "keywords": ["jobs", "ats", "recruitment", "scraper"],
+  "keywords": [
+    "jobs",
+    "ats",
+    "recruitment",
+    "scraper"
+  ],
   "license": "UNLICENSED",
   "devDependencies": {
     "@types/node": "^20.0.0",

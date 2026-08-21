@@ -1,7 +1,7 @@
 import { afterEach, describe, it, expect } from "vitest";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { compactLink, createProgressFile, createRenderer, createRunMarker, createStopWatch, findConfig, parseArgs, parseDashboardFlags, renderTrail } from "../src/cli.js";
@@ -65,9 +65,9 @@ describe("findConfig", () => {
     }
   });
 
-  it("defaults to the fixed realtime config under dashboard.configs", () => {
+  it("defaults to the user-owned realtime config under ~/.omijobs", () => {
     const { path } = findConfig();
-    expect(resolve(path)).toBe(resolve(dirname(fileURLToPath(import.meta.url)), "..", "dashboard.configs", "realtime", "config.json"));
+    expect(resolve(path)).toBe(resolve(homedir(), ".omijobs", "dashboard.configs", "realtime", "config.json"));
   });
 
   it("throws when the explicit path does not exist", async () => {

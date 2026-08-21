@@ -8,15 +8,15 @@ import { addProvider, enableProvider, loadAnalysisSettings, providerApiKeyStatus
 import { discoverConfigs, resolveBaseRetention } from "./dashboardConfig.js";
 import { loadCron } from "./cron.js";
 import type { AnalysisProviderConfig } from "./types.js";
+import { ensureUserFiles } from "./userPaths.js";
 
 const PACKAGE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const ANALYSIS_STATE_DIR = join(homedir(), ".omijobs");
 export const ANALYSIS_DIR = join(ANALYSIS_STATE_DIR, "analysis");
 export const ACTIVE_FILE = join(ANALYSIS_DIR, "active");
 
-function dbPathForKey(packageDir: string, dbKey: string): string {
-  const cronFile = resolve(packageDir, "cron.json");
-  const meta = discoverConfigs({ packageDir, cronFile }).find((item) => item.id === dbKey);
+function dbPathForKey(configDir: string, cronFile: string, dbKey: string): string {
+  const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((item) => item.id === dbKey);
   if (!meta) throw new Error(`No DB config "${dbKey}"`);
   return meta.db.path;
 }
@@ -49,7 +49,7 @@ function summaryFile(file: string, summary: AnalysisSummary): void { mkdirSync(d
 
 export interface AnalysisCliOptions { packageDir?: string; stateDir?: string; instructions?: string; }
 export async function runAnalysisCommand(dbKey: string, options: AnalysisCliOptions = {}): Promise<number> {
-  const packageDir = resolve(options.packageDir ?? PACKAGE_DIR); const state = stateFromEnvironment(resolveAnalysisState(options.stateDir)); const dbPath = dbPathForKey(packageDir, dbKey);
+  const packageDir = resolve(options.packageDir ?? PACKAGE_DIR); const stateDir = options.stateDir ?? ANALYSIS_STATE_DIR; const user = ensureUserFiles(packageDir, stateDir); const state = stateFromEnvironment(resolveAnalysisState(stateDir)); const dbPath = dbPathForKey(user.stateDir, user.cronFile, dbKey);
   if (!existsSync(dbPath)) throw new Error(`DB does not exist: ${dbPath}`);
   const settings = loadAnalysisSettings(packageDir, options.stateDir ?? ANALYSIS_STATE_DIR);
   const provider = settings.providers.find((item) => item.id === settings.enabledProvider);
@@ -64,7 +64,7 @@ export async function runAnalysisCommand(dbKey: string, options: AnalysisCliOpti
   try {
     const summary = await runAnalysis({
       file: dbPath, instructions: options.instructions ?? "", systemPrompt: settings.systemPrompt, descriptionMaxChars: settings.descriptionMaxChars,
-      retentionDays: resolveBaseRetention(packageDir) ?? 30, threshold: settings.recommendedThreshold, provider,
+      retentionDays: resolveBaseRetention(stateDir) ?? 30, threshold: settings.recommendedThreshold, provider,
       callProvider: (messages) => callProvider(provider, apiKey, messages),
       aborted: () => existsSync(state.stop(dbKey)),
       progress: { line: (line) => { progressLines.push(line); writeFileSync(state.log(dbKey), `${progressLines.join("\n")}\n`); }, result: (line) => { progressLines.push(`result: ${line}`); writeFileSync(state.log(dbKey), `${progressLines.join("\n")}\n`); } },

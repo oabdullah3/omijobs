@@ -15,6 +15,7 @@ import { addProvider, enableProvider, loadAnalysisSettings, providerApiKeyStatus
 import { resolveAnalysisState, readActiveMarker } from "./analysisCli.js";
 import { bulkMarkBelowThreshold } from "./analysisDb.js";
 import type { RunConfig } from "./types.js";
+import { ensureUserFiles, userPaths } from "./userPaths.js";
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_PORT = 5211;
@@ -67,8 +68,9 @@ function readBody(req: IncomingMessage): Promise<unknown> {
 export async function startDashboard(options: DashboardOptions = {}): Promise<DashboardServer> {
   const packageDir = resolve(options.packageDir ?? PKG);
   const stateDir = options.stateDir ?? join(homedir(), ".omijobs");
+  const configDir = options.packageDir === undefined ? ensureUserFiles(packageDir, stateDir).stateDir : packageDir;
   const cliPath = options.cliPath ?? resolve(packageDir, "dist", "cli.js");
-  const cronFile = resolve(packageDir, "cron.json");
+  const cronFile = options.packageDir === undefined ? userPaths(stateDir).cronFile : resolve(packageDir, "cron.json");
   const staticRoot = resolve(packageDir, "dashboard");
   const clock = options.now ?? (() => new Date());
   const analysisState = resolveAnalysisState(stateDir);
@@ -102,7 +104,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
     const targets = [cronFile, join(stateDir, "cron.log"), analysisState.active];
     let metas: ReturnType<typeof discoverConfigs> = [];
     try {
-      metas = discoverConfigs({ packageDir, cronFile });
+      metas = discoverConfigs({ packageDir: configDir, cronFile });
     } catch {
       // unreadable cron.json — still watch the file itself for recovery
     }
@@ -133,7 +135,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
       sendJson(res, 200, {
         packageDir,
         stateDir,
-        configPath: join(packageDir, ...BASE_CONFIG_REL.split("/")),
+        configPath: join(configDir, ...BASE_CONFIG_REL.split("/")),
         cronPath: cronFile,
         cliPath,
         port: boundPort,
@@ -143,7 +145,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
     }
 
     if (path === "/api/analysis" && method === "GET") {
-      sendJson(res, 200, getAnalysisDashboardState({ packageDir, cronFile, stateDir, now: clock }));
+      sendJson(res, 200, getAnalysisDashboardState({ packageDir, configDir, cronFile, stateDir, now: clock }));
       return;
     }
 
@@ -157,7 +159,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
       if (providerApiKeyStatus(provider, packageDir) !== "set") { sendJson(res, 400, { error: "Provider API key is not set" }); return; }
       const active = readActiveMarker(analysisState.active);
       if (active) { sendJson(res, 409, { error: "An analysis is already in progress" }); return; }
-      const meta = discoverConfigs({ packageDir, cronFile }).find((item) => item.id === dbKey);
+      const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((item) => item.id === dbKey);
       if (!meta || !meta.db.exists) { sendJson(res, 400, { error: `No existing DB for "${dbKey}"` }); return; }
       mkdirSync(analysisState.dir, { recursive: true });
       const child = spawn(process.execPath, [cliPath, "analyze", "run", dbKey], { detached: true, windowsHide: true, stdio: "ignore", env: { ...process.env, OMI_JOB_FETCH_TRIGGER: "dashboard", OMI_JOB_FETCH_PROGRESS_FILE: analysisState.log(dbKey), OMI_JOB_FETCH_STOP_FILE: analysisState.stop(dbKey), OMI_JOB_FETCH_RUN_MARKER: analysisState.active } });
@@ -168,7 +170,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
       let body: Record<string, unknown> = {};
       try { body = await readBody(req) as Record<string, unknown>; } catch { /* empty */ }
       const dbKey = String(body.db ?? ""); const active = readActiveMarker(analysisState.active);
-      const meta = discoverConfigs({ packageDir, cronFile }).find((item) => item.id === dbKey);
+      const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((item) => item.id === dbKey);
       if (!active || !meta || meta.db.path !== active.dbPath) { sendJson(res, 409, { error: "No active analysis for this DB" }); return; }
       mkdirSync(analysisState.dir, { recursive: true }); writeFileSync(analysisState.stop(dbKey), new Date().toISOString()); broadcast("analysis", { stopping: dbKey }); sendJson(res, 200, { ok: true }); return;
     }
@@ -186,10 +188,10 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
     if (testRoute && method === "POST") { sendJson(res, 501, { error: "Provider test is available through the analyze CLI" }); return; }
     if (path === "/api/analysis/settings" && method === "PUT") { try { const body = await readBody(req) as Record<string, unknown>; const current = loadAnalysisSettings(packageDir, stateDir); const next = { ...current, ...body }; saveAnalysisSettings(stateDir, next as any); sendJson(res, 200, { settings: toPublicSettings(next as any, packageDir) }); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return; }
     const markRoute = /^\/api\/analysis\/([^/]+)\/mark-unrecommended$/i.exec(path);
-    if (markRoute && method === "POST") { const settings = loadAnalysisSettings(packageDir, stateDir); const meta = discoverConfigs({ packageDir, cronFile }).find((item) => item.id === decodeURIComponent(markRoute[1])); if (!meta || !meta.db.exists) { sendJson(res, 404, { error: "DB not found" }); return; } const count = bulkMarkBelowThreshold(meta.db.path, settings.recommendedThreshold); broadcast("db", {}); sendJson(res, 200, { ok: true, count }); return; }
+    if (markRoute && method === "POST") { const settings = loadAnalysisSettings(packageDir, stateDir); const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((item) => item.id === decodeURIComponent(markRoute[1])); if (!meta || !meta.db.exists) { sendJson(res, 404, { error: "DB not found" }); return; } const count = bulkMarkBelowThreshold(meta.db.path, settings.recommendedThreshold); broadcast("db", {}); sendJson(res, 200, { ok: true, count }); return; }
 
     if (path === "/api/configs" && method === "GET") {
-      const metas = discoverConfigs({ packageDir, cronFile });
+      const metas = discoverConfigs({ packageDir: configDir, cronFile });
       const counts = new Map(discoverDbs(metas).map((d) => [d.key, d.total]));
       sendJson(res, 200, metas.map((m) => ({ ...m, db: { ...m.db, jobCount: counts.get(m.id) ?? 0 } })));
       return;
@@ -198,7 +200,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
     const configsId = /^\/api\/configs\/([^/]+)$/.exec(path);
     if (configsId && method === "GET") {
       const id = decodeURIComponent(configsId[1]);
-      const meta = discoverConfigs({ packageDir, cronFile }).find((m) => m.id === id);
+      const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((m) => m.id === id);
       if (!meta) {
         sendJson(res, 404, { error: `No config "${id}"` });
         return;
@@ -214,7 +216,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
         sendJson(res, 409, { error: `A run for "${id}" is already in progress — wait for it to finish.` });
         return;
       }
-      const meta = discoverConfigs({ packageDir, cronFile }).find((m) => m.id === id);
+      const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((m) => m.id === id);
       if (!meta) {
         sendJson(res, 404, { error: `No config "${id}"` });
         return;
@@ -266,7 +268,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
     const configs = /^\/api\/configs\/([^/]+)$/.exec(path);
     if (configs && method === "PUT") {
       const id = decodeURIComponent(configs[1]);
-      const metas = discoverConfigs({ packageDir, cronFile });
+      const metas = discoverConfigs({ packageDir: configDir, cronFile });
       const meta = metas.find((m) => m.id === id);
       if (!meta) {
         sendJson(res, 404, { error: `No config "${id}"` });
@@ -382,7 +384,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
         sendJson(res, 409, { error: `A cron job named "${id}" already exists — names must be unique.` });
         return;
       }
-      const metas = discoverConfigs({ packageDir, cronFile });
+      const metas = discoverConfigs({ packageDir: configDir, cronFile });
       const baseMeta = metas.find((m) => m.kind === "base");
       if (!baseMeta) {
         sendJson(res, 500, { error: "No base config.json — cannot create a cron config." });
@@ -423,7 +425,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
     }
 
     if (path === "/api/dbs" && method === "GET") {
-      const metas = discoverConfigs({ packageDir, cronFile });
+      const metas = discoverConfigs({ packageDir: configDir, cronFile });
       sendJson(res, 200, discoverDbs(metas));
       return;
     }
@@ -431,7 +433,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
     const dbJobs = /^\/api\/dbs\/([^/]+)\/jobs$/.exec(path);
     if (dbJobs && method === "GET") {
       const key = decodeURIComponent(dbJobs[1]);
-      const meta = discoverConfigs({ packageDir, cronFile }).find((m) => m.id === key);
+      const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((m) => m.id === key);
       if (!meta) {
         sendJson(res, 404, { error: `No source "${key}"` });
         return;
@@ -461,7 +463,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
     if (jobDetail && method === "GET") {
       const key = decodeURIComponent(jobDetail[1]);
       const signature = decodeURIComponent(jobDetail[2]);
-      const meta = discoverConfigs({ packageDir, cronFile }).find((m) => m.id === key);
+      const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((m) => m.id === key);
       if (!meta) {
         sendJson(res, 404, { error: `No source "${key}"` });
         return;
@@ -494,7 +496,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
         sendJson(res, 400, { error: `status must be one of ${JOB_STATUSES.join(", ")}` });
         return;
       }
-      const meta = discoverConfigs({ packageDir, cronFile }).find((m) => m.id === dbKey);
+      const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((m) => m.id === dbKey);
       if (!meta) {
         sendJson(res, 404, { error: `No source "${String(dbKey)}"` });
         return;
@@ -521,9 +523,9 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
     }
 
     if (path === "/api/runs" && method === "GET") {
-      const metas = discoverConfigs({ packageDir, cronFile });
+      const metas = discoverConfigs({ packageDir: configDir, cronFile });
       const baseMeta = metas.find((m) => m.kind === "base");
-      sendJson(res, 200, listRuns(baseMeta ? resolve(baseMeta.outputDir) : resolve("output")));
+      sendJson(res, 200, listRuns(baseMeta ? resolve(dirname(baseMeta.path), baseMeta.outputDir) : resolve(stateDir, "output")));
       return;
     }
 

@@ -1,7 +1,8 @@
 # config.guide — omijobs configuration reference
 
 `config.json` is the single point of control. The CLI takes **one flag**: `--config <path>`
-(defaults to `dashboard.configs/realtime/config.json`). Everything else —
+(defaults to `~/.omijobs/dashboard.configs/realtime/config.json`, auto-seeded from the
+shipped `config.base.json` on first run). Everything else —
 which queries to run, which adapters, each adapter's search params and pacing — lives in
 the config file. Every option below is real, pulled from the adapters' manifests and code.
 
@@ -116,7 +117,7 @@ the package requires **Node ≥ 24**.
 ### Scheduled runs (`cron`)
 
 Scheduled runs are managed separately from the realtime config — a small `cron.json` (default:
-the folder containing `package.json`) lists jobs, each pointing at its own config under
+`~/.omijobs/cron.json`) lists jobs, each pointing at its own config under
 `dashboard.configs/cron/` plus a human-friendly schedule, and a self-managed background
 **gateway** spawns them on time.
 
@@ -176,7 +177,7 @@ Manual `omijobs run` writes no trigger field.
 ### AI analysis
 
 Analysis settings live in `~/.omijobs/analysis.json` and are seeded from
-`analysis.config.example.json`. Providers use OpenAI-format chat completions.
+`analysis.config.base.json`. Providers use OpenAI-format chat completions.
 Set the provider key in the process environment or package `.env`; the dashboard
 only reports `set` or `unset`.
 
