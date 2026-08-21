@@ -134,6 +134,34 @@ function renderTable() {
       el("tbody", {}, ...body)));
 }
 
+function deleteSourceModal() {
+  const info = state.info;
+  if (!info) return;
+  const key = info.key;
+  const confirmInput = el("input", { class: "input", placeholder: `Type "${key}"` });
+  const deleteBtn = el("button", { class: "btn btn-danger", disabled: true }, "Delete database");
+  confirmInput.addEventListener("input", () => { deleteBtn.disabled = confirmInput.value.trim() !== key; });
+  deleteBtn.addEventListener("click", async () => {
+    try {
+      await api.del(`/api/dbs/${encodeURIComponent(key)}`, { confirm: confirmInput.value.trim() });
+      backdrop.remove();
+      toast(`Deleted ${esc(key)}`, "good");
+      if (state.key === key) state.key = null;
+      refresh();
+    } catch (error) {
+      toast(error.message, "warn");
+    }
+  });
+  const modal = el("div", { class: "modal" },
+    el("h3", {}, `Delete ${esc(key)}?`),
+    el("p", { class: "hint" }, `This permanently deletes ${esc(info.path)} and cannot be undone.`),
+    el("div", { class: "field" }, el("label", {}, `Type "${key}" to confirm`), confirmInput),
+    el("div", { class: "modal-actions" },
+      deleteBtn,
+      el("button", { class: "btn btn-ghost", onclick: () => backdrop.remove() }, "Cancel")));
+  const backdrop = openModal(modal);
+}
+
 function renderBody() {
   const srcOpts = state.sources.map((s) => {
     const name = s.key === "base" ? "default (jobs.db)" : s.key;
@@ -145,6 +173,7 @@ function renderBody() {
       class: "select",
       onchange: (e) => { state.key = e.target.value; state.info = state.sources.find((s) => s.key === state.key); refresh(); },
     }, srcOpts));
+  const deleteBtn = el("button", { class: "btn small btn-danger", disabled: !state.info?.exists, onclick: deleteSourceModal }, "Delete DB");
   const statusFilter = el("select", {
     class: "select",
     onchange: (e) => { state.status = e.target.value; refresh(); },
@@ -164,7 +193,7 @@ function renderBody() {
   });
   return el("div", { id: "jobs-root" },
     el("div", { id: "jobs-error" }),
-    el("div", { class: "toolbar" }, source, statusFilter, recommended, search),
+    el("div", { class: "toolbar" }, source, statusFilter, recommended, search, deleteBtn),
     el("div", { id: "jobs-body" }, renderTicker(), renderTable()));
 }
 

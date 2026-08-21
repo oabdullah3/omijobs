@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { el, esc, fmtRel, toast, openModal } from "../app.js";
 
-const state = { data: null, timer: null, db: "", instructions: "" };
+const state = { data: null, timer: null, db: "", instructions: "", testResults: {} };
 
 const PROVIDER_DEFAULTS = { temperature: 0.2, maxTokens: 400, timeoutMs: 60000, retries: 3, retryBackoffMs: 2000 };
 
@@ -9,11 +9,15 @@ async function refresh() {
   try {
     state.data = await api.get("/api/analysis");
     if (!state.db) state.db = state.data.dbs[0]?.key ?? "";
-    const root = document.getElementById("analysis-root");
-    if (root) root.replaceChildren(renderBody());
+    renderNow();
   } catch (error) {
     toast(error.message, "warn");
   }
+}
+
+function renderNow() {
+  const root = document.getElementById("analysis-root");
+  if (root) root.replaceChildren(renderBody());
 }
 
 export function onLive(event) {
@@ -56,17 +60,24 @@ async function removeProvider(id) {
   try { await api.del(`/api/analysis/providers/${encodeURIComponent(id)}`); toast("Provider removed", "good"); refresh(); }
   catch (error) { toast(error.message, "warn"); }
 }
-async function testProvider(id, node) {
-  node.textContent = "testing…";
-  node.className = "hint";
+async function testProvider(id) {
+  state.testResults[id] = { status: "testing" };
+  renderNow();
   try {
     const result = await api.post(`/api/analysis/providers/${encodeURIComponent(id)}/test`);
-    node.textContent = result.ok ? `ok · ${result.reply}` : `error · ${result.error}`;
-    node.className = result.ok ? "hint good" : "hint warn";
+    state.testResults[id] = result.ok ? { ok: true, reply: result.reply } : { ok: false, error: result.error };
   } catch (error) {
-    node.textContent = `error · ${error.message}`;
-    node.className = "hint warn";
+    state.testResults[id] = { ok: false, error: error.message };
   }
+  renderNow();
+}
+
+function testResultLine(providerId) {
+  const result = state.testResults[providerId];
+  if (!result) return null;
+  if (result.status === "testing") return el("div", { class: "hint" }, "testing…");
+  const ok = result.ok === true;
+  return el("div", { class: ok ? "hint good" : "hint warn" }, ok ? `ok · ${result.reply}` : `error · ${result.error}`);
 }
 
 // --- form builders ---
@@ -144,9 +155,8 @@ function providerFormModal(existing) {
 
 function providerCard(provider, enabledProviderId) {
   const enabled = provider.id === enabledProviderId;
-  const testResult = el("div", { class: "hint", "data": { test: provider.id } });
   const controls = [
-    el("button", { class: "btn small", onclick: () => testProvider(provider.id, testResult) }, "Test"),
+    el("button", { class: "btn small", onclick: () => testProvider(provider.id) }, "Test"),
     el("button", { class: "btn small", disabled: enabled, onclick: () => enable(provider.id) }, enabled ? "Enabled" : "Enable"),
     el("button", { class: "btn small", onclick: () => providerFormModal(provider) }, "Edit"),
     el("button", { class: "btn small btn-danger", onclick: () => removeProvider(provider.id) }, "Remove"),
@@ -159,7 +169,7 @@ function providerCard(provider, enabledProviderId) {
     el("p", { class: "hint" }, `${esc(provider.model)} · ${esc(provider.baseUrl)}`),
     el("p", { class: "hint" }, `env ${esc(provider.apiKeyEnv)} · temp ${provider.temperature} · max ${provider.maxTokens} · timeout ${provider.timeoutMs}ms · retries ${provider.retries}`),
     el("div", { class: "toolbar" }, ...controls),
-    testResult);
+    testResultLine(provider.id));
 }
 
 function providersCard(s) {
@@ -206,7 +216,7 @@ function renderBody() {
   const data = state.data ?? { settings: { providers: [], enabledProvider: null }, dbs: [], runningDb: null };
   const enabled = data.settings.providers.find((provider) => provider.id === data.settings.enabledProvider);
   const running = Boolean(data.runningDb);
-  const dbOptions = data.dbs.map((db) => el("option", { value: db.key }, `${db.label} · ${db.path}`));
+  const dbOptions = data.dbs.map((db) => el("option", { value: db.key }, db.label));
   const instruction = el("textarea", { class: "input", rows: 4, placeholder: "What should the evaluator prioritize?", value: state.instructions, oninput: (event) => { state.instructions = event.target.value; } });
   const dbSelect = el("select", { class: "select", value: state.db, onchange: (event) => { state.db = event.target.value; } }, dbOptions);
   const cards = data.dbs.map((db) => el("div", { class: "card" },

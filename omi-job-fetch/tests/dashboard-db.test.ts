@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import {
+  deleteDbFile,
   discoverDbs,
   getJob,
   isBusyError,
@@ -190,5 +191,35 @@ describe("isBusyError", () => {
     expect(isBusyError("database is locked")).toBe(true);
     expect(isBusyError(new Error("SQLITE_BUSY: cannot commit"))).toBe(true);
     expect(isBusyError("disk I/O error")).toBe(false);
+  });
+});
+
+describe("deleteDbFile", () => {
+  it("removes the db file and its -wal/-shm sidecars", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "omijobs-del-"));
+    try {
+      const file = join(dir, "jobs.db");
+      seed(file);
+      writeFileSync(`${file}-wal`, "");
+      writeFileSync(`${file}-shm`, "");
+      expect(existsSync(file)).toBe(true);
+      const result = deleteDbFile(file);
+      expect(result.ok).toBe(true);
+      expect(existsSync(file)).toBe(false);
+      expect(existsSync(`${file}-wal`)).toBe(false);
+      expect(existsSync(`${file}-shm`)).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("succeeds when the db does not exist", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "omijobs-del-"));
+    try {
+      const result = deleteDbFile(join(dir, "missing.db"));
+      expect(result.ok).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

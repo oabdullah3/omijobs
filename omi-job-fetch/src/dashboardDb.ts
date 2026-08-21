@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import type { ConfigMeta } from "./dashboardConfig.js";
 import { extractScoreReason } from "./analysisProvider.js";
@@ -196,4 +196,23 @@ export function isBusyError(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);
   const lower = msg.toLowerCase();
   return lower.includes("busy") || lower.includes("locked") || msg.includes("SQLITE_BUSY");
+}
+
+/**
+ * Permanently delete an aggregate DB: the main SQLite file plus its `-wal` /
+ * `-shm` sidecar files (which SQLite may leave behind in WAL mode). Missing
+ * files are ignored. Returns `{ ok: false, error }` when the file is locked by
+ * a live writer (e.g. an in-flight run or the cron gateway) so callers can
+ * surface a clear message instead of silently half-deleting.
+ */
+export function deleteDbFile(path: string): { ok: boolean; error?: string } {
+  const candidates = [path, `${path}-wal`, `${path}-shm`];
+  for (const file of candidates) {
+    try {
+      rmSync(file, { force: true });
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  return { ok: true };
 }

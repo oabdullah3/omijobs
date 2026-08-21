@@ -361,6 +361,45 @@ describe("dashboard server", () => {
     }
   });
 
+  it("DELETE /api/dbs/:key requires typed confirmation and removes the file", async () => {
+    const env = await makeEnv();
+    try {
+      const db = join(env.dir, "output", "jobs.db"); // the base config's outputDir
+      const { DatabaseSync } = (await import("node:module")).createRequire(import.meta.url)("node:sqlite") as typeof import("node:sqlite");
+      await mkdir(join(env.dir, "output"), { recursive: true });
+      const sql = new DatabaseSync(db);
+      sql.exec(`CREATE TABLE jobs (signature TEXT PRIMARY KEY, posted_at TEXT, job TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'unapplied', analysis TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`);
+      sql.close();
+      expect(existsSync(db)).toBe(true);
+
+      const wrong = await fetch(env.server.url + "/api/dbs/base", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: "nope" }),
+      });
+      expect(wrong.status).toBe(400);
+      expect(existsSync(db)).toBe(true);
+
+      const miss = await fetch(env.server.url + "/api/dbs/nope", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: "nope" }),
+      });
+      expect(miss.status).toBe(404);
+
+      const ok = await fetch(env.server.url + "/api/dbs/base", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: "base" }),
+      });
+      expect(ok.status).toBe(200);
+      expect(existsSync(db)).toBe(false);
+    } finally {
+      await env.server.close();
+      await rm(env.dir, { recursive: true, force: true });
+    }
+  });
+
   it("GET /api/jobs/:dbKey/:signature returns the detail and 404s on miss", async () => {
     const env = await makeEnv();
     try {

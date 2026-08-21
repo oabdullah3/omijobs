@@ -25,7 +25,12 @@ export const api = {
     fetch(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(parse),
   put: (path, body = {}) =>
     fetch(path, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(parse),
-  del: (path) => fetch(path, { method: "DELETE" }).then(parse),
+  del: (path, body = null) =>
+    fetch(path, {
+      method: "DELETE",
+      headers: body ? { "content-type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    }).then(parse),
   onLive: (cb) => {
     const es = new EventSource("/api/events");
     es.onmessage = (e) => {

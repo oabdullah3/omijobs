@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { runCronCommand } from "./cronCli.js";
 import { runAnalyzeCommand } from "./analysisCli.js";
+import { runDbCommand } from "./dbCli.js";
 import { resolveBaseRetention } from "./dashboardConfig.js";
 import { startDashboard } from "./dashboardServer.js";
 import { adapters } from "./registry.js";
@@ -103,6 +104,7 @@ function printHelp(): void {
 Commands:
   run [--config <path>]   Run a job sweep now (the default when no command is given)
   cron ...                Manage the cron gateway and scheduled jobs
+  db ...                  List and delete aggregate DBs
   dashboard [--port N]    Open the web dashboard (default port 5211)
 
 Options:
@@ -436,6 +438,8 @@ async function main(): Promise<void> {
     code = await runCommand(argv.slice(1));
   } else if (argv[0] === "dashboard") {
     code = await runDashboardCommand(argv.slice(1));
+  } else if (argv[0] === "db") {
+    code = await runDbCommand(argv.slice(1));
   } else {
     // Bare `omijobs [--config …]` behaves as `omijobs run`.
     code = await runCommand(argv);

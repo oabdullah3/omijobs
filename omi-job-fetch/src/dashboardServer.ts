@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { adapters } from "./registry.js";
 import { loadCron, parseSchedule } from "./cron.js";
 import { applyFriendlyUpdate, BASE_CONFIG_REL, configMeta, CRON_CONFIG_DIR, discoverConfigs, readConfig, slugify, validateConfig, writeConfig } from "./dashboardConfig.js";
-import { discoverDbs, getJob, isBusyError, listJobs, setJobStatus, JOB_STATUSES } from "./dashboardDb.js";
+import { discoverDbs, getJob, isBusyError, listJobs, setJobStatus, deleteDbFile, JOB_STATUSES } from "./dashboardDb.js";
 import { getCronState, runCronMutation, tailLog } from "./dashboardCron.js";
 import { listRuns, readRunStatus, readRunningMarkers, startRun } from "./dashboardRuns.js";
 import { getAnalysisDashboardState } from "./dashboardAnalysis.js";
@@ -452,6 +452,44 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
     if (path === "/api/dbs" && method === "GET") {
       const metas = discoverConfigs({ packageDir: configDir, cronFile });
       sendJson(res, 200, discoverDbs(metas));
+      return;
+    }
+
+    const dbsId = /^\/api\/dbs\/([^/]+)$/.exec(path);
+    if (dbsId && method === "DELETE") {
+      const key = decodeURIComponent(dbsId[1]);
+      const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((m) => m.id === key);
+      if (!meta) {
+        sendJson(res, 404, { error: `No source "${key}"` });
+        return;
+      }
+      let body: Record<string, unknown> = {};
+      try {
+        body = (await readBody(req)) as Record<string, unknown>;
+      } catch {
+        // empty body → empty confirmation
+      }
+      const confirm = String(body.confirm ?? "").trim();
+      if (confirm !== key) {
+        sendJson(res, 400, { error: `Type "${key}" to confirm deletion` });
+        return;
+      }
+      if (runningIds().has(key)) {
+        sendJson(res, 409, { error: `A run for "${key}" is in progress — stop it first.` });
+        return;
+      }
+      const active = readActiveMarker(analysisState.active);
+      if (active && active.dbPath === meta.db.path) {
+        sendJson(res, 409, { error: "This DB is being analyzed — stop the analysis first." });
+        return;
+      }
+      const result = deleteDbFile(meta.db.path);
+      if (!result.ok) {
+        sendJson(res, 500, { error: result.error });
+        return;
+      }
+      broadcast("db", {});
+      sendJson(res, 200, { ok: true });
       return;
     }
 
