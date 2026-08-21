@@ -9,6 +9,7 @@ export interface CronJobState {
   id: string;
   kind: "run" | "analysis";
   dbKey?: string;
+  instructions?: string;
   config: string;
   configPath: string;
   schedule: string;
@@ -90,6 +91,7 @@ export function getCronState(input: CronStateInput): CronGatewayState {
     id: job.id,
     kind: job.kind,
     ...(job.dbKey ? { dbKey: job.dbKey } : {}),
+    ...(job.instructions ? { instructions: job.instructions } : {}),
     config: job.config ?? "",
     configPath: job.config ? resolve(resolve(input.cronFile, ".."), job.config) : "",
     schedule: job.schedule,

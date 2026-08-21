@@ -74,6 +74,23 @@ describe("getCronState", () => {
     }
   });
 
+  it("surfaces instructions on analysis jobs", async () => {
+    const { dir, cronFile, stateDir } = await makeDir();
+    try {
+      await writeFile(
+        cronFile,
+        JSON.stringify({
+          paused: false,
+          jobs: [{ id: "a", kind: "analysis", dbKey: "base", instructions: "remote internship", schedule: "every 6 hours", enabled: true, lastRun: null, lastStatus: null }],
+        }),
+      );
+      const state = getCronState({ cronFile, stateDir, now: NOW });
+      expect(state.jobs[0]).toMatchObject({ id: "a", kind: "analysis", dbKey: "base", instructions: "remote internship" });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("surfaces an unreadable cron.json as an error", async () => {
     const { dir, cronFile, stateDir } = await makeDir();
     try {

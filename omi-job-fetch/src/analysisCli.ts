@@ -86,7 +86,11 @@ function parseProvider(argv: string[]): AnalysisProviderConfig {
 }
 export async function runAnalyzeCommand(argv: string[], options: AnalysisCliOptions = {}): Promise<number> {
   const [command, target, ...rest] = argv; const packageDir = resolve(options.packageDir ?? PACKAGE_DIR); const stateDir = options.stateDir ?? ANALYSIS_STATE_DIR;
-  if (!command || command === "run") return runAnalysisCommand(command === "run" ? target : command, options);
+  if (!command || command === "run") {
+    const runOptions = { ...options };
+    for (let i = 0; i < rest.length; i++) if (rest[i] === "--instructions") runOptions.instructions = rest[++i] ?? "";
+    return runAnalysisCommand(command === "run" ? target : command, runOptions);
+  }
   if (command === "status") { console.log(JSON.stringify(analysisStatus(packageDir, stateDir), null, 2)); return 0; }
   if (command === "stop") return stopAnalysis(target, stateDir) ? 0 : 2;
   if (command === "providers") {

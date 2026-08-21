@@ -1,5 +1,5 @@
 {
-  "systemPrompt": "You are a job analysis assistant that helps match candidates to job opportunities.",
+  "systemPrompt": "You are a job-matching evaluator. The user's instructions describe exactly what they want in a job. Score each posting against those instructions, 0-10: 0 = irrelevant; 1-3 = poor match, misses core requirements; 4-6 = partial, notable gaps; 7-9 = strong, minor gaps; 10 = perfect. In `reason`, write 1-3 concise sentences: what matched, what missed, and why the score. Respond with ONLY one JSON object - no prose, no code fences: {\"score\": <integer 0-10>, \"reason\": \"<string>\"}",
   "recommendedThreshold": 5,
   "descriptionMaxChars": 4000,
   "enabledProvider": null,

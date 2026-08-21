@@ -140,6 +140,21 @@ describe("cron.json load/save", () => {
     }
   });
 
+  it("round-trips an analysis job's instructions", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "omijobs-cron-"));
+    try {
+      const file = join(dir, "cron.json");
+      saveCron(file, {
+        paused: false,
+        jobs: [job({ kind: "analysis", dbKey: "base", instructions: "remote internship in Hong Kong", config: undefined })],
+      });
+      expect(JSON.parse(readFileSync(file, "utf8")).jobs[0].instructions).toBe("remote internship in Hong Kong");
+      expect(loadCron(file).jobs[0].instructions).toBe("remote internship in Hong Kong");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("defaults enabled/lastRun/lastStatus and pauses", async () => {
     const dir = await mkdtemp(join(tmpdir(), "omijobs-cron-"));
     try {
@@ -227,6 +242,44 @@ describe("defaultSpawnJob", () => {
         expect(seen).toContain(`progress=${join(stateDir, "runs", "job.log")}`);
         expect(seen).toContain(`stop=${stopFile}`);
         expect(seen).toContain(`marker=${join(stateDir, "runs", "job.running")}`);
+      } finally {
+        delete process.env.STUB_OUT;
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("passes --instructions to the analyze spawn for analysis jobs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "omijobs-cron-"));
+    try {
+      const stateDir = join(dir, "state");
+      const stubOut = join(dir, "stub-argv.txt");
+      const cli = join(dir, "stub.cjs");
+      await writeFile(cli, [
+        'const fs = require("node:fs");',
+        "fs.writeFileSync(process.env.STUB_OUT, JSON.stringify(process.argv.slice(2)));",
+        "process.exit(0);",
+      ].join("\n"));
+      process.env.STUB_OUT = stubOut;
+      try {
+        const spawn = defaultSpawnJob(cli, stateDir);
+        const outcome = await spawn(
+          {
+            id: "analysis-job",
+            kind: "analysis",
+            dbKey: "base",
+            instructions: "remote internship",
+            schedule: "every 6 hours",
+            enabled: true,
+            lastRun: null,
+            lastStatus: null,
+            parsed: parseSchedule("every 6 hours"),
+          },
+          join(dir, "config.json"),
+        );
+        expect(outcome.ok).toBe(true);
+        expect(JSON.parse(readFileSync(stubOut, "utf8"))).toEqual(["analyze", "run", "base", "--instructions", "remote internship"]);
       } finally {
         delete process.env.STUB_OUT;
       }

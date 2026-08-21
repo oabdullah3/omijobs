@@ -163,7 +163,10 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
       const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((item) => item.id === dbKey);
       if (!meta || !meta.db.exists) { sendJson(res, 400, { error: `No existing DB for "${dbKey}"` }); return; }
       mkdirSync(analysisState.dir, { recursive: true });
-      const child = spawn(process.execPath, [cliPath, "analyze", "run", dbKey], { detached: true, windowsHide: true, stdio: "ignore", env: { ...process.env, OMI_JOB_FETCH_TRIGGER: "dashboard", OMI_JOB_FETCH_PROGRESS_FILE: analysisState.log(dbKey), OMI_JOB_FETCH_STOP_FILE: analysisState.stop(dbKey), OMI_JOB_FETCH_RUN_MARKER: analysisState.active } });
+      const instructions = String(body.instructions ?? "");
+      const args = [cliPath, "analyze", "run", dbKey];
+      if (instructions) args.push("--instructions", instructions);
+      const child = spawn(process.execPath, args, { detached: true, windowsHide: true, stdio: "ignore", env: { ...process.env, OMI_JOB_FETCH_TRIGGER: "dashboard", OMI_JOB_FETCH_PROGRESS_FILE: analysisState.log(dbKey), OMI_JOB_FETCH_STOP_FILE: analysisState.stop(dbKey), OMI_JOB_FETCH_RUN_MARKER: analysisState.active } });
       child.unref(); broadcast("analysis", { runningDb: dbKey }); sendJson(res, 200, { ok: true, pid: child.pid ?? null }); return;
     }
 
@@ -445,7 +448,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
     if (path === "/api/cron/add-analysis" && method === "POST") {
       let body: Record<string, unknown>;
       try { body = await readBody(req) as Record<string, unknown>; } catch (error) { sendJson(res, 400, { error: errMsg(error) }); return; }
-      const result = await runCronMutation({ cliPath, args: ["add-analysis", "--name", String(body.name ?? ""), "--schedule", String(body.schedule ?? ""), "--db", String(body.db ?? "")] });
+      const result = await runCronMutation({ cliPath, args: ["add-analysis", "--name", String(body.name ?? ""), "--schedule", String(body.schedule ?? ""), "--db", String(body.db ?? ""), "--instructions", String(body.instructions ?? "")] });
       broadcast("cron", {}); sendJson(res, result.ok ? 200 : 502, { ...result }); return;
     }
 
