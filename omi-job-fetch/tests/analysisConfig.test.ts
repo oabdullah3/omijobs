@@ -129,7 +129,7 @@ describe("AnalysisConfig - providerApiKeyStatus", () => {
       retryBackoffMs: 2000,
     };
 
-    const status = providerApiKeyStatus(provider, pkgDir);
+    const status = providerApiKeyStatus(provider, stateDir);
     expect(status).toBe("set");
 
     delete process.env.TEST_API_KEY;
@@ -149,15 +149,15 @@ describe("AnalysisConfig - providerApiKeyStatus", () => {
       retryBackoffMs: [1000, 2000],
     };
 
-    const status = providerApiKeyStatus(provider, pkgDir);
+    const status = providerApiKeyStatus(provider, stateDir);
     expect(status).toBe("unset");
   });
 });
 
 describe("AnalysisConfig - writeProviderApiKey", () => {
   beforeEach(() => {
-    // Ensure .env exists with no OPENROUTER_API_KEY
-    const envPath = path.join(pkgDir, ".env");
+    // Ensure the state-dir .env exists with no OPENROUTER_API_KEY
+    const envPath = path.join(stateDir, ".env");
     if (fs.existsSync(envPath)) {
       fs.rmSync(envPath);
     }
@@ -177,9 +177,9 @@ describe("AnalysisConfig - writeProviderApiKey", () => {
       retryBackoffMs: 2000,
     };
 
-    writeProviderApiKey(provider, "sk-or-test-key-123", pkgDir);
+    writeProviderApiKey(provider, "sk-or-test-key-123", stateDir);
 
-    const envPath = path.join(pkgDir, ".env");
+    const envPath = path.join(stateDir, ".env");
     const envContent = fs.readFileSync(envPath, "utf-8");
     expect(envContent).toContain("OPENROUTER_API_KEY=sk-or-test-key-123");
   });
@@ -199,10 +199,10 @@ describe("AnalysisConfig - writeProviderApiKey", () => {
       retryBackoffMs: 2000,
     };
 
-    writeProviderApiKey(provider, "first-key", pkgDir);
-    writeProviderApiKey(provider, "second-key", pkgDir);
+    writeProviderApiKey(provider, "first-key", stateDir);
+    writeProviderApiKey(provider, "second-key", stateDir);
 
-    const envPath = path.join(pkgDir, ".env");
+    const envPath = path.join(stateDir, ".env");
     const envContent = fs.readFileSync(envPath, "utf-8");
     expect(envContent).toContain("OPENROUTER_API_KEY=second-key");
     // Should only have one line with the key

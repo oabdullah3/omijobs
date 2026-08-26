@@ -28,5 +28,5 @@ export function getAnalysisDashboardState(options: DashboardAnalysisOptions): an
     const log = existsSync(state.log(key)) ? readFileSync(state.log(key), "utf8").trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? null : null;
     return { key, label: owners.map((owner) => owner.id).join(", "), path, exists, ...counts, retentionDays, status: status?.outcome ?? null, lastRun: status?.finishedAt ?? null, summary: status ?? log, running: path === runningDb };
   });
-  return { settings: toPublicSettings(settings, options.packageDir), dbs, runningDb };
+  return { settings: toPublicSettings(settings, options.stateDir), dbs, runningDb };
 }

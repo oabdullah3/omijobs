@@ -59,12 +59,12 @@ function parseDotEnv(file: string): Record<string, string> {
   return values;
 }
 
-export function resolveProviderApiKey(provider: AnalysisProviderConfig, packageDir: string): string | undefined {
-  return process.env[provider.apiKeyEnv] || parseDotEnv(join(packageDir, ".env"))[provider.apiKeyEnv];
+export function resolveProviderApiKey(provider: AnalysisProviderConfig, stateDir: string): string | undefined {
+  return process.env[provider.apiKeyEnv] || parseDotEnv(join(stateDir, ".env"))[provider.apiKeyEnv];
 }
 
-export function providerApiKeyStatus(provider: AnalysisProviderConfig, packageDir: string): "set" | "unset" {
-  return resolveProviderApiKey(provider, packageDir) ? "set" : "unset";
+export function providerApiKeyStatus(provider: AnalysisProviderConfig, stateDir: string): "set" | "unset" {
+  return resolveProviderApiKey(provider, stateDir) ? "set" : "unset";
 }
 
 export function loadAnalysisSettings(packageDir: string, stateDir: string): AnalysisSettings {
@@ -85,7 +85,7 @@ export function saveAnalysisSettings(stateDir: string, settings: AnalysisSetting
   renameSync(temp, target);
 }
 
-export function toPublicSettings(settings: AnalysisSettings, packageDir = ""): AnalysisSettingsPublic {
+export function toPublicSettings(settings: AnalysisSettings, stateDir = ""): AnalysisSettingsPublic {
   return {
     systemPrompt: settings.systemPrompt,
     recommendedThreshold: settings.recommendedThreshold,
@@ -105,7 +105,7 @@ export function toPublicSettings(settings: AnalysisSettings, packageDir = ""): A
       timeoutMs: provider.timeoutMs,
       retries: provider.retries,
       retryBackoffMs: provider.retryBackoffMs,
-      apiKeyStatus: providerApiKeyStatus(provider, packageDir),
+      apiKeyStatus: providerApiKeyStatus(provider, stateDir),
     })),
   };
 }
@@ -133,9 +133,10 @@ export function enableProvider(settings: AnalysisSettings, id: string): Analysis
   return validateSettings({ ...settings, enabledProvider: id });
 }
 
-export function writeProviderApiKey(provider: AnalysisProviderConfig, value: string, packageDir: string): void {
+export function writeProviderApiKey(provider: AnalysisProviderConfig, value: string, stateDir: string): void {
   if (!value.trim()) throw new Error("API key cannot be empty");
-  const file = join(packageDir, ".env");
+  mkdirSync(stateDir, { recursive: true });
+  const file = join(stateDir, ".env");
   const lines = existsSync(file) ? readFileSync(file, "utf8").split(/\r?\n/) : [];
   const prefix = `${provider.apiKeyEnv}=`;
   const index = lines.findIndex((line) => line.startsWith(prefix));
