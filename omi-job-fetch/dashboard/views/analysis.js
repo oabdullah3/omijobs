@@ -4,20 +4,57 @@ import { el, esc, fmtRel, toast, openModal } from "../app.js";
 const state = { data: null, timer: null, db: "", instructions: "", testResults: {} };
 
 const PROVIDER_DEFAULTS = { temperature: 0.2, maxTokens: 400, timeoutMs: 60000, retries: 3, retryBackoffMs: 2000 };
+const EMPTY = { settings: { providers: [], enabledProvider: null }, dbs: [], runningDb: null };
+const data = () => state.data ?? EMPTY;
 
 async function refresh() {
   try {
     state.data = await api.get("/api/analysis");
     if (!state.db) state.db = state.data.dbs[0]?.key ?? "";
-    renderNow();
+    renderDynamic();
   } catch (error) {
     toast(error.message, "warn");
   }
 }
 
-function renderNow() {
-  const root = document.getElementById("analysis-root");
-  if (root) root.replaceChildren(renderBody());
+// Re-render only the regions whose content changes on poll (per-db cards,
+// providers, run/stop callout) and re-sync the DB <select> options in place.
+// The instruction textarea, DB select, and settings form are built once in
+// render() and never touched again, so they keep focus while the user types.
+function renderDynamic() {
+  syncDbSelect();
+  const cards = document.getElementById("analysis-cards");
+  if (cards) cards.replaceChildren(...renderDbCards());
+  refreshProviders();
+  refreshActions();
+}
+
+function refreshProviders() {
+  const providers = document.getElementById("analysis-providers");
+  if (providers) providers.replaceChildren(providersCard(data().settings));
+}
+
+function refreshActions() {
+  const actions = document.getElementById("analysis-actions");
+  // replaceChildren(null, …) coerces null to the literal "null" text node, so
+  // filter out the callout placeholders that renderActions returns when there's
+  // nothing to show (no missing-provider warning, no running callout).
+  if (actions) actions.replaceChildren(...renderActions().filter(Boolean));
+}
+
+function syncDbSelect() {
+  const select = document.getElementById("analysis-db-select");
+  if (!select) return;
+  const dbs = data().dbs ?? [];
+  const keys = dbs.map((db) => db.key);
+  const same = select.options.length === keys.length && keys.every((key, i) => select.options[i].value === key);
+  if (same) return;
+  select.replaceChildren(...keys.map((key) => {
+    const db = dbs.find((d) => d.key === key);
+    return el("option", { value: key }, db?.label ?? key);
+  }));
+  if (!keys.includes(state.db)) state.db = keys[0] ?? "";
+  select.value = state.db;
 }
 
 export function onLive(event) {
@@ -62,14 +99,14 @@ async function removeProvider(id) {
 }
 async function testProvider(id) {
   state.testResults[id] = { status: "testing" };
-  renderNow();
+  refreshProviders();
   try {
     const result = await api.post(`/api/analysis/providers/${encodeURIComponent(id)}/test`);
     state.testResults[id] = result.ok ? { ok: true, reply: result.reply } : { ok: false, error: result.error };
   } catch (error) {
     state.testResults[id] = { ok: false, error: error.message };
   }
-  renderNow();
+  refreshProviders();
 }
 
 function testResultLine(providerId) {
@@ -212,40 +249,46 @@ function settingsCard(s) {
     form);
 }
 
-function renderBody() {
-  const data = state.data ?? { settings: { providers: [], enabledProvider: null }, dbs: [], runningDb: null };
-  const enabled = data.settings.providers.find((provider) => provider.id === data.settings.enabledProvider);
-  const running = Boolean(data.runningDb);
-  const dbOptions = data.dbs.map((db) => el("option", { value: db.key }, db.label));
-  const instruction = el("textarea", { class: "input", rows: 4, placeholder: "What should the evaluator prioritize?", value: state.instructions, oninput: (event) => { state.instructions = event.target.value; } });
-  const dbSelect = el("select", { class: "select", value: state.db, onchange: (event) => { state.db = event.target.value; } }, dbOptions);
-  const cards = data.dbs.map((db) => el("div", { class: "card" },
+function renderDbCards() {
+  const dbs = data().dbs ?? [];
+  return dbs.map((db) => el("div", { class: "card" },
     el("div", { class: "toolbar" },
       el("h3", {}, esc(db.label)),
       db.running ? el("span", { class: "badge live" }, "analyzing") : null),
     el("p", { class: "hint" }, db.running ? (db.summary ?? "working") : (db.status ? `${db.status} · ${fmtRel(db.lastRun)}` : "never analyzed")),
     el("p", {}, `${db.analyzed} analyzed · ${db.pending} pending · ${db.recommended} recommended`),
     el("button", { class: "btn small btn-danger", disabled: !db.exists || db.running, onclick: () => mark(db.key) }, "Mark below threshold uninterested")));
+}
 
-  return el("div", {},
-    el("p", { class: "eyebrow" }, "Analysis"),
-    el("h2", { class: "docs" }, "AI job recommendations"),
+function renderActions() {
+  const enabled = Boolean(data().settings.providers.find((provider) => provider.id === data().settings.enabledProvider));
+  const running = Boolean(data().runningDb);
+  const dbOptions = data().dbs ?? [];
+  return [
     !enabled ? el("div", { class: "callout warn" }, el("p", {}, "No AI provider configured — analysis is disabled.")) : null,
     running ? el("div", { class: "callout" },
-      el("p", {}, `This DB is still being analyzed: ${esc(data.runningDb)}`),
+      el("p", {}, `This DB is still being analyzed: ${esc(data().runningDb)}`),
       el("button", { class: "btn btn-danger", onclick: stop }, "Stop")) : null,
-    el("div", { class: "card" },
-      el("p", { class: "eyebrow" }, "Run analysis"),
-      dbSelect,
-      instruction,
-      el("button", { class: "btn btn-primary", disabled: !enabled || !dbOptions.length || running, onclick: run }, "Run analysis")),
-    el("div", {}, ...cards),
-    providersCard(data.settings),
-    settingsCard(data.settings));
+    el("button", { class: "btn btn-primary", disabled: !enabled || !dbOptions.length || running, onclick: run }, "Run analysis"),
+  ];
 }
 
 export async function render() {
   if (!state.data) await refresh();
-  return el("div", { id: "analysis-root" }, renderBody());
+  const s = data();
+  const dbOptions = s.dbs.map((db) => el("option", { value: db.key }, db.label));
+  const instruction = el("textarea", { class: "input", rows: 4, placeholder: "What should the evaluator prioritize?", value: state.instructions, oninput: (event) => { state.instructions = event.target.value; } });
+  const dbSelect = el("select", { id: "analysis-db-select", class: "select", value: state.db, onchange: (event) => { state.db = event.target.value; } }, dbOptions);
+  return el("div", { id: "analysis-root" },
+    el("p", { class: "eyebrow" }, "Analysis"),
+    el("h2", { class: "docs" }, "AI job recommendations"),
+    el("div", { class: "card" },
+      el("p", { class: "eyebrow" }, "Run analysis"),
+      dbSelect,
+      instruction,
+      el("div", { id: "analysis-actions" }, ...renderActions())),
+    el("div", { id: "analysis-cards" }, ...renderDbCards()),
+    el("div", { id: "analysis-providers" }, providersCard(s.settings)),
+    settingsCard(s.settings));
 }
 
