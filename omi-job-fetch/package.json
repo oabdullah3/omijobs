@@ -1,6 +1,6 @@
 {
   "name": "omijobs",
-  "version": "0.1.9",
+  "version": "0.1.15",
   "description": "Deterministic programmatic job retrieval from aggregator portals and ATS backends",
   "type": "module",
   "bin": {
@@ -13,7 +13,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "deploy": "npm version patch && npm publish"
   },
   "files": [
     "dist/**",
