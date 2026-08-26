@@ -5,9 +5,10 @@ import * as config from "./views/config.js";
 import * as docs from "./views/docs.js";
 import * as settings from "./views/settings.js";
 import * as analysis from "./views/analysis.js";
+import * as logs from "./views/logs.js";
 
-const ROUTES = { jobs, cron, config, docs, settings, analysis };
-const NAV = [["jobs", "Jobs"], ["analysis", "Analysis"], ["cron", "Cron"], ["config", "Config"], ["docs", "Docs"]];
+const ROUTES = { jobs, cron, config, docs, settings, analysis, logs };
+const NAV = [["jobs", "Jobs"], ["analysis", "Analysis"], ["cron", "Cron"], ["config", "Config"], ["docs", "Docs"], ["logs", "Logs"]];
 const $ = (id) => document.getElementById(id);
 
 // --- DOM helpers (exported for views) ---
@@ -23,6 +24,10 @@ export function el(tag, attrs = {}, ...children) {
       node.innerHTML = value;
     } else if (key === "checked" || key === "disabled") {
       node[key] = Boolean(value);
+    } else if (key === "value") {
+      // textarea/select/option/input values are DOM properties, not attributes —
+      // setAttribute("value", …) leaves <textarea> and <select> visually empty.
+      node.value = value;
     } else {
       node.setAttribute(key, String(value));
     }

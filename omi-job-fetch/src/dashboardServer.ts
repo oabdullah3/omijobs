@@ -15,6 +15,7 @@ import { addProvider, enableProvider, loadAnalysisSettings, providerApiKeyStatus
 import { callProvider } from "./analysisProvider.js";
 import { resolveAnalysisState, readActiveMarker } from "./analysisCli.js";
 import { bulkMarkBelowThreshold } from "./analysisDb.js";
+import { createLogger, errorData, logMeta, queryLogs } from "./logger.js";
 import type { RunConfig } from "./types.js";
 import { ensureUserFiles, userPaths } from "./userPaths.js";
 
@@ -75,6 +76,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
   const staticRoot = resolve(packageDir, "dashboard");
   const clock = options.now ?? (() => new Date());
   const analysisState = resolveAnalysisState(stateDir);
+  const dlog = createLogger({ source: "dashboard" });
 
   const clients = new Set<ServerResponse>();
   const inflight = new Set<string>();
@@ -157,7 +159,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
       const settings = loadAnalysisSettings(packageDir, stateDir);
       const provider = settings.providers.find((item) => item.id === settings.enabledProvider);
       if (!provider) { sendJson(res, 400, { error: "No enabled AI provider" }); return; }
-      if (providerApiKeyStatus(provider, packageDir) !== "set") { sendJson(res, 400, { error: "Provider API key is not set" }); return; }
+      if (providerApiKeyStatus(provider, stateDir) !== "set") { sendJson(res, 400, { error: "Provider API key is not set" }); return; }
       const active = readActiveMarker(analysisState.active);
       if (active) { sendJson(res, 409, { error: "An analysis is already in progress" }); return; }
       const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((item) => item.id === dbKey);
@@ -167,7 +169,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
       const args = [cliPath, "analyze", "run", dbKey];
       if (instructions) args.push("--instructions", instructions);
       const child = spawn(process.execPath, args, { detached: true, windowsHide: true, stdio: "ignore", env: { ...process.env, OMI_JOB_FETCH_TRIGGER: "dashboard", OMI_JOB_FETCH_PROGRESS_FILE: analysisState.log(dbKey), OMI_JOB_FETCH_STOP_FILE: analysisState.stop(dbKey), OMI_JOB_FETCH_RUN_MARKER: analysisState.active } });
-      child.unref(); broadcast("analysis", { runningDb: dbKey }); sendJson(res, 200, { ok: true, pid: child.pid ?? null }); return;
+      child.unref(); dlog.info("dashboard.run", "analysis run triggered", { kind: "analysis", db: dbKey }); broadcast("analysis", { runningDb: dbKey }); sendJson(res, 200, { ok: true, pid: child.pid ?? null }); return;
     }
 
     if (path === "/api/analysis/stop" && method === "POST") {
@@ -176,11 +178,11 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
       const dbKey = String(body.db ?? ""); const active = readActiveMarker(analysisState.active);
       const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((item) => item.id === dbKey);
       if (!active || !meta || meta.db.path !== active.dbPath) { sendJson(res, 409, { error: "No active analysis for this DB" }); return; }
-      mkdirSync(analysisState.dir, { recursive: true }); writeFileSync(analysisState.stop(dbKey), new Date().toISOString()); broadcast("analysis", { stopping: dbKey }); sendJson(res, 200, { ok: true }); return;
+      mkdirSync(analysisState.dir, { recursive: true }); writeFileSync(analysisState.stop(dbKey), new Date().toISOString()); dlog.info("dashboard.stop", "analysis stop triggered", { kind: "analysis", db: dbKey }); broadcast("analysis", { stopping: dbKey }); sendJson(res, 200, { ok: true }); return;
     }
 
     const providerRoute = /^\/api\/analysis\/providers(?:\/([^/]+))?$/i.exec(path);
-    if (providerRoute && method === "GET") { const settings = loadAnalysisSettings(packageDir, stateDir); sendJson(res, 200, toPublicSettings(settings, packageDir)); return; }
+    if (providerRoute && method === "GET") { const settings = loadAnalysisSettings(packageDir, stateDir); sendJson(res, 200, toPublicSettings(settings, stateDir)); return; }
     if (providerRoute && method === "POST") {
       let body: any; try { body = await readBody(req); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); return; }
       try {
@@ -190,21 +192,21 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
         // Onboarding requires a key; edits keep the existing key when the field is left blank.
         if (!isUpdate && (!body.key || String(body.key).trim() === "")) throw new Error("provider API key is required");
         const next = isUpdate ? updateProvider(settings, providerRoute[1], provider) : addProvider(settings, provider);
-        if (body.key && provider?.apiKeyEnv) writeProviderApiKey(provider, String(body.key), packageDir);
+        if (body.key && provider?.apiKeyEnv) writeProviderApiKey(provider, String(body.key), stateDir);
         saveAnalysisSettings(stateDir, next);
-        sendJson(res, 200, { settings: toPublicSettings(next, packageDir) });
+        sendJson(res, 200, { settings: toPublicSettings(next, stateDir) });
       } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return;
     }
-    if (providerRoute && method === "DELETE") { try { const next = removeProvider(loadAnalysisSettings(packageDir, stateDir), providerRoute[1]); saveAnalysisSettings(stateDir, next); sendJson(res, 200, { settings: toPublicSettings(next, packageDir) }); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return; }
+    if (providerRoute && method === "DELETE") { try { const next = removeProvider(loadAnalysisSettings(packageDir, stateDir), providerRoute[1]); saveAnalysisSettings(stateDir, next); sendJson(res, 200, { settings: toPublicSettings(next, stateDir) }); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return; }
     const enableRoute = /^\/api\/analysis\/providers\/([^/]+)\/enable$/i.exec(path);
-    if (enableRoute && method === "POST") { try { const next = enableProvider(loadAnalysisSettings(packageDir, stateDir), enableRoute[1]); saveAnalysisSettings(stateDir, next); sendJson(res, 200, { settings: toPublicSettings(next, packageDir) }); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return; }
+    if (enableRoute && method === "POST") { try { const next = enableProvider(loadAnalysisSettings(packageDir, stateDir), enableRoute[1]); saveAnalysisSettings(stateDir, next); sendJson(res, 200, { settings: toPublicSettings(next, stateDir) }); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return; }
     const testRoute = /^\/api\/analysis\/providers\/([^/]+)\/test$/i.exec(path);
     if (testRoute && method === "POST") {
       const id = decodeURIComponent(testRoute[1]);
       const settings = loadAnalysisSettings(packageDir, stateDir);
       const provider = settings.providers.find((item) => item.id === id);
       if (!provider) { sendJson(res, 404, { error: `provider "${id}" does not exist` }); return; }
-      const key = resolveProviderApiKey(provider, packageDir);
+      const key = resolveProviderApiKey(provider, stateDir);
       if (!key) { sendJson(res, 200, { ok: false, error: "provider API key is not set" }); return; }
       try {
         const reply = await callProvider(provider, key, [{ role: "system", content: "Reply with the single word OK" }, { role: "user", content: "ping" }]);
@@ -214,7 +216,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
       }
       return;
     }
-    if (path === "/api/analysis/settings" && method === "PUT") { try { const body = await readBody(req) as Record<string, unknown>; const current = loadAnalysisSettings(packageDir, stateDir); const next = validateSettings({ ...current, ...body }); saveAnalysisSettings(stateDir, next); sendJson(res, 200, { settings: toPublicSettings(next, packageDir) }); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return; }
+    if (path === "/api/analysis/settings" && method === "PUT") { try { const body = await readBody(req) as Record<string, unknown>; const current = loadAnalysisSettings(packageDir, stateDir); const next = validateSettings({ ...current, ...body }); saveAnalysisSettings(stateDir, next); sendJson(res, 200, { settings: toPublicSettings(next, stateDir) }); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return; }
     const markRoute = /^\/api\/analysis\/([^/]+)\/mark-unrecommended$/i.exec(path);
     if (markRoute && method === "POST") { const settings = loadAnalysisSettings(packageDir, stateDir); const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((item) => item.id === decodeURIComponent(markRoute[1])); if (!meta || !meta.db.exists) { sendJson(res, 404, { error: "DB not found" }); return; } const count = bulkMarkBelowThreshold(meta.db.path, settings.recommendedThreshold); broadcast("db", {}); sendJson(res, 200, { ok: true, count }); return; }
 
@@ -255,6 +257,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
         cliPath,
         configPath: meta.path,
         trigger: "dashboard",
+        jobId: id,
         progressFile: resolve(stateDir, "runs", `${id}.log`),
         stopFile: resolve(stateDir, "runs", `${id}.stop`),
         runMarkerFile: resolve(stateDir, "runs", `${id}.running`),
@@ -267,6 +270,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
           broadcast("db", {});
         },
       });
+      dlog.info("dashboard.run", "run triggered", { kind: "run", id, runId });
       sendJson(res, 200, { ok: true, runId });
       return;
     }
@@ -285,9 +289,11 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
         mkdirSync(dirname(stopFile), { recursive: true });
         writeFileSync(stopFile, new Date().toISOString(), "utf8");
       } catch (error) {
+        dlog.error("dashboard.error", "stop failed", { kind: "run", id, ...errorData(error) });
         sendJson(res, 500, { error: errMsg(error) });
         return;
       }
+      dlog.info("dashboard.stop", "run stop triggered", { kind: "run", id });
       broadcast("runs", { stopping: id });
       sendJson(res, 200, { ok: true });
       return;
@@ -358,6 +364,28 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
       return;
     }
 
+    if (path === "/api/logs" && method === "GET") {
+      const q = url.searchParams;
+      const limit = Math.max(1, Math.min(Number(q.get("limit") ?? 200), 1000));
+      const offset = Math.max(0, Number(q.get("offset") ?? 0));
+      sendJson(res, 200, queryLogs({
+        source: q.get("source") ?? undefined,
+        level: q.get("level") ?? undefined,
+        from: q.get("from") ?? undefined,
+        to: q.get("to") ?? undefined,
+        q: q.get("q") ?? undefined,
+        runId: q.get("runId") ?? undefined,
+        limit,
+        offset,
+      }, join(stateDir, "logs")));
+      return;
+    }
+
+    if (path === "/api/logs/meta" && method === "GET") {
+      sendJson(res, 200, logMeta(join(stateDir, "logs")));
+      return;
+    }
+
     const cronAction = /^\/api\/cron\/(?!add$)([a-z]+)$/.exec(path);
     if (cronAction && method === "POST") {
       const action = cronAction[1];
@@ -376,6 +404,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
         ? [action, String(body.id ?? "")]
         : [action];
       const result = await runCronMutation({ cliPath, args });
+      if (action === "remove") dlog.info("dashboard.remove", "cron job removed", { id: String(body.id ?? "") });
       broadcast("cron", {});
       sendJson(res, result.ok ? 200 : 502, { ...result });
       return;
@@ -440,6 +469,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
         cliPath,
         args: ["add", "--config", configRel, "--schedule", schedule, "--name", id],
       });
+      dlog.info("dashboard.add", "cron job added", { id });
       broadcast("cron", {});
       sendJson(res, result.ok ? 200 : 502, { ...result });
       return;
@@ -449,6 +479,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
       let body: Record<string, unknown>;
       try { body = await readBody(req) as Record<string, unknown>; } catch (error) { sendJson(res, 400, { error: errMsg(error) }); return; }
       const result = await runCronMutation({ cliPath, args: ["add-analysis", "--name", String(body.name ?? ""), "--schedule", String(body.schedule ?? ""), "--db", String(body.db ?? ""), "--instructions", String(body.instructions ?? "")] });
+      dlog.info("dashboard.add", "analysis cron added", { id: String(body.name ?? "") });
       broadcast("cron", {}); sendJson(res, result.ok ? 200 : 502, { ...result }); return;
     }
 

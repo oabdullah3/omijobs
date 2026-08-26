@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, appendFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { createLogger, errorData, type Logger } from "./logger.js";
 import type { CronFile, CronJob, CronSchedule } from "./types.js";
 
 /**
@@ -222,6 +223,7 @@ export function defaultSpawnJob(cliPath: string, stateDir: string) {
           OMI_JOB_FETCH_PROGRESS_FILE: progressFile,
           OMI_JOB_FETCH_STOP_FILE: stopFile,
           OMI_JOB_FETCH_RUN_MARKER: markerFile,
+          OMI_JOB_FETCH_JOB_ID: job.id,
         },
         stdio: "ignore",
       });
@@ -248,6 +250,8 @@ export interface GatewayOptions {
   tickMs?: number;
   /** Injectable log sink (default: console + append to stateDir/cron.log). */
   log?: (line: string) => void;
+  /** Injectable structured logger (default: createLogger({ source: "gateway" })). */
+  logger?: Logger;
   /** Injectable run spawner for tests (default: defaultSpawnJob(cliPath)). */
   spawnJob?: (job: CronJob, configPath: string) => Promise<SpawnOutcome>;
 }
@@ -288,6 +292,8 @@ export async function runGateway(options: GatewayOptions): Promise<void> {
   const spawnJob = options.spawnJob ?? defaultSpawnJob(options.cliPath, options.stateDir);
   const pidFile = resolve(options.stateDir, "gateway.pid");
   const stopFile = resolve(options.stateDir, "stop");
+  const logger = options.logger ?? createLogger({ source: "gateway" });
+  let lastTickLog = 0;
 
   // Serialize cron.json writes so concurrent job completions can't clobber
   // each other's lastRun/lastStatus updates (single-writer within the process).
@@ -303,12 +309,14 @@ export async function runGateway(options: GatewayOptions): Promise<void> {
 
   const inFlight = new Set<string>();
   log(`gateway started (pid ${process.pid}, ${Math.round(tickMs / 1000)}s tick, cron: ${options.cronFile})`);
+  logger.info("gateway.started", `gateway started (pid ${process.pid})`, { tickMs, cronFile: options.cronFile });
   writeFileSync(pidFile, String(process.pid));
 
   try {
     for (;;) {
       if (existsSync(stopFile)) {
         log("stop marker seen — shutting down");
+        logger.info("gateway.stopped", "stop marker seen — shutting down");
         break;
       }
       let cron: CronFile | undefined;
@@ -316,9 +324,14 @@ export async function runGateway(options: GatewayOptions): Promise<void> {
         cron = loadCron(options.cronFile);
       } catch (error) {
         log(`cron.json error: ${errMsg(error)} — skipping tick`);
+        logger.warn("gateway.tick_error", `cron.json error: ${errMsg(error)} — skipping tick`, errorData(error));
       }
       if (cron && !cron.paused) {
         const now = clock();
+        if (now.getTime() - lastTickLog >= 60_000) {
+          lastTickLog = now.getTime();
+          logger.debug("gateway.tick", "gateway tick", { enabled: cron.jobs.filter((j) => j.enabled).length, inFlight: inFlight.size });
+        }
         for (const job of cron.jobs) {
           if (!job.enabled) continue;
           if (inFlight.has(job.id)) continue;
@@ -330,6 +343,7 @@ export async function runGateway(options: GatewayOptions): Promise<void> {
               if (target) target.lastStatus = `missing config: ${job.config}`;
             });
             log(`[${job.id}] missing config ${job.config} — marked failed`);
+            logger.warn("job.missing_config", `[${job.id}] missing config ${job.config}`, { jobId: job.id, config: job.config });
             continue;
           }
           await writeCron((c) => {
@@ -339,6 +353,7 @@ export async function runGateway(options: GatewayOptions): Promise<void> {
           });
           inFlight.add(job.id);
           log(`[${job.id}] spawn ${job.kind === "analysis" ? `analysis ${job.dbKey}` : job.config} (${job.schedule})`);
+          logger.info("job.spawned", `[${job.id}] spawn ${job.kind === "analysis" ? `analysis ${job.dbKey}` : job.config}`, { jobId: job.id, kind: job.kind, schedule: job.schedule });
           spawnJob(job, configPath)
             .then((outcome) => {
               inFlight.delete(job.id);
@@ -346,16 +361,21 @@ export async function runGateway(options: GatewayOptions): Promise<void> {
               return writeCron((c) => {
                 const target = c.jobs.find((j) => j.id === job.id);
                 if (target) target.lastStatus = text;
-              }).then(() => log(`[${job.id}] finished: ${text}`));
+              }).then(() => {
+                log(`[${job.id}] finished: ${text}`);
+                logger.info("job.finished", `[${job.id}] finished: ${text}`, { jobId: job.id, outcome: text });
+              });
             })
             .catch((error) => {
               inFlight.delete(job.id);
               log(`[${job.id}] error: ${errMsg(error)}`);
+              logger.error("job.spawn_error", `[${job.id}] error: ${errMsg(error)}`, { jobId: job.id, ...errorData(error) });
             });
         }
       }
       if (await sleepUntil(tickMs, stopFile)) {
         log("stop marker seen — shutting down");
+        logger.info("gateway.stopped", "stop marker seen — shutting down");
         break;
       }
     }

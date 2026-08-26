@@ -146,3 +146,16 @@ a { color: var(--accent); }
 .docs p { color: var(--muted); }
 .docs code { font: 13px var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
 .docs ul { color: var(--muted); }
+
+.log-list { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; max-height: 70vh; overflow: auto; font: 12px/1.6 var(--mono); }
+.log-row { display: flex; gap: 10px; padding: 6px 14px; border-bottom: 1px solid var(--line); align-items: baseline; cursor: default; }
+.log-row:hover { background: var(--bg); }
+.log-ts { color: var(--faint); flex: 0 0 150px; }
+.log-level { flex: 0 0 44px; font-weight: 700; }
+.log-source { flex: 0 0 84px; color: var(--muted); }
+.log-event { flex: 0 0 180px; color: var(--muted); }
+.log-msg { flex: 1; white-space: pre-wrap; word-break: break-word; }
+.log-row.error .log-level, .log-row.error .log-msg { color: var(--accent); }
+.log-row.warn .log-level, .log-row.warn .log-msg { color: var(--warn); }
+.log-row.debug .log-msg { color: var(--faint); }
+.log-data { margin: 6px 0 2px; padding: 8px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--muted); white-space: pre-wrap; overflow: auto; }

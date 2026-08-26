@@ -14,6 +14,8 @@ export interface RunSpawnInput {
   stopFile?: string;
   /** Running-marker file the CLI writes its PID into while in flight (dashboard reads it to reattach). */
   runMarkerFile?: string;
+  /** Optional cron/dashboard job id, threaded to the child as OMI_JOB_FETCH_JOB_ID for log correlation. */
+  jobId?: string;
 }
 export interface RunSpawnResult { id: string; }
 
@@ -42,6 +44,7 @@ export function startRun(input: RunSpawnInput): RunSpawnResult {
     env: {
       ...process.env,
       OMI_JOB_FETCH_TRIGGER: input.trigger ?? "dashboard",
+      ...(input.jobId ? { OMI_JOB_FETCH_JOB_ID: input.jobId } : {}),
       ...(input.progressFile ? { OMI_JOB_FETCH_PROGRESS_FILE: input.progressFile } : {}),
       ...(input.stopFile ? { OMI_JOB_FETCH_STOP_FILE: input.stopFile } : {}),
       ...(input.runMarkerFile ? { OMI_JOB_FETCH_RUN_MARKER: input.runMarkerFile } : {}),

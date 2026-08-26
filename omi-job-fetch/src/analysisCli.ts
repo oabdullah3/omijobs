@@ -7,6 +7,8 @@ import { callProvider } from "./analysisProvider.js";
 import { addProvider, enableProvider, loadAnalysisSettings, providerApiKeyStatus, removeProvider, resolveProviderApiKey, saveAnalysisSettings, toPublicSettings, updateProvider, writeProviderApiKey } from "./analysisConfig.js";
 import { discoverConfigs, resolveBaseRetention } from "./dashboardConfig.js";
 import { loadCron } from "./cron.js";
+import { createLogger } from "./logger.js";
+import { timestampId } from "./runtime.js";
 import type { AnalysisProviderConfig } from "./types.js";
 import { ensureUserFiles } from "./userPaths.js";
 
@@ -54,19 +56,21 @@ export async function runAnalysisCommand(dbKey: string, options: AnalysisCliOpti
   const settings = loadAnalysisSettings(packageDir, options.stateDir ?? ANALYSIS_STATE_DIR);
   const provider = settings.providers.find((item) => item.id === settings.enabledProvider);
   if (!provider) throw new Error("no enabled analysis provider");
-  const apiKey = resolveProviderApiKey(provider, packageDir);
+  const apiKey = resolveProviderApiKey(provider, stateDir);
   if (!apiKey) throw new Error(`missing API key for ${provider.id}`);
   const active = readActiveMarker(state.active);
   if (active) return 2;
   rmSync(state.stop(dbKey), { force: true });
   if (!acquireAnalysisLock(state.active, dbPath)) return 2;
   const progressLines: string[] = [];
+  const logger = createLogger({ source: "analysis", runId: timestampId(new Date()), jobId: dbKey });
   try {
     const summary = await runAnalysis({
       file: dbPath, instructions: options.instructions ?? "", systemPrompt: settings.systemPrompt, descriptionMaxChars: settings.descriptionMaxChars,
       retentionDays: resolveBaseRetention(stateDir) ?? 30, threshold: settings.recommendedThreshold, provider,
-      callProvider: (messages) => callProvider(provider, apiKey, messages),
+      callProvider: (messages) => callProvider(provider, apiKey, messages, fetch, undefined, logger),
       aborted: () => existsSync(state.stop(dbKey)),
+      logger,
       progress: { line: (line) => { progressLines.push(line); writeFileSync(state.log(dbKey), `${progressLines.join("\n")}\n`); }, result: (line) => { progressLines.push(`result: ${line}`); writeFileSync(state.log(dbKey), `${progressLines.join("\n")}\n`); } },
     });
     summaryFile(state.status(dbKey), summary);
@@ -76,7 +80,7 @@ export async function runAnalysisCommand(dbKey: string, options: AnalysisCliOpti
 
 export function analysisStatus(packageDir = PACKAGE_DIR, stateDir = ANALYSIS_STATE_DIR): unknown {
   const state = resolveAnalysisState(stateDir); const active = readActiveMarker(state.active); const settings = loadAnalysisSettings(packageDir, stateDir);
-  return { settings: toPublicSettings(settings, packageDir), active };
+  return { settings: toPublicSettings(settings, stateDir), active };
 }
 export function stopAnalysis(dbKey: string, stateDir = ANALYSIS_STATE_DIR): boolean { const state = resolveAnalysisState(stateDir); const active = readActiveMarker(state.active); if (!active) return false; mkdirSync(state.dir, { recursive: true }); writeFileSync(state.stop(dbKey), new Date().toISOString()); return true; }
 
@@ -95,11 +99,11 @@ export async function runAnalyzeCommand(argv: string[], options: AnalysisCliOpti
   if (command === "stop") return stopAnalysis(target, stateDir) ? 0 : 2;
   if (command === "providers") {
     const settings = loadAnalysisSettings(packageDir, stateDir); const action = target;
-    if (action === "list") { console.log(JSON.stringify(toPublicSettings(settings, packageDir), null, 2)); return 0; }
+    if (action === "list") { console.log(JSON.stringify(toPublicSettings(settings, stateDir), null, 2)); return 0; }
     if (action === "add") { saveAnalysisSettings(stateDir, addProvider(settings, parseProvider(rest))); return 0; }
     if (action === "remove") { saveAnalysisSettings(stateDir, removeProvider(settings, rest[0])); return 0; }
     if (action === "enable") { saveAnalysisSettings(stateDir, enableProvider(settings, rest[0])); return 0; }
-    if (action === "test") { const provider = settings.providers.find((item) => item.id === rest[0]); if (!provider) throw new Error(`provider "${rest[0]}" does not exist`); const key = resolveProviderApiKey(provider, packageDir); if (!key) throw new Error("provider key is unset"); console.log(await callProvider(provider, key, [{ role: "system", content: "Reply with the single word OK" }, { role: "user", content: "ping" }])); return 0; }
+    if (action === "test") { const provider = settings.providers.find((item) => item.id === rest[0]); if (!provider) throw new Error(`provider "${rest[0]}" does not exist`); const key = resolveProviderApiKey(provider, stateDir); if (!key) throw new Error("provider key is unset"); console.log(await callProvider(provider, key, [{ role: "system", content: "Reply with the single word OK" }, { role: "user", content: "ping" }])); return 0; }
   }
   throw new Error(`unknown analyze command: ${command}`);
 }

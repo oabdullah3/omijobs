@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startDashboard } from "../src/dashboardServer.js";
+import { createLogger } from "../src/logger.js";
 
 const NOW = "2026-08-19T12:00:00.000Z";
 
@@ -449,6 +450,22 @@ describe("dashboard server", () => {
     try {
       const res = await fetch(env.server.url + "/api/nope");
       expect(res.status).toBe(404);
+    } finally {
+      await env.server.close();
+      await rm(env.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("GET /api/logs returns filtered events and /api/logs/meta returns facets", async () => {
+    const env = await makeEnv();
+    try {
+      const logger = createLogger({ source: "dashboard" }, join(env.stateDir, "logs"));
+      logger.info("dashboard.run", "run base", { id: "base" });
+      const logs = await (await fetch(`${env.server.url}/api/logs?source=dashboard`)).json();
+      expect(logs.total).toBeGreaterThanOrEqual(1);
+      expect(logs.events[0].source).toBe("dashboard");
+      const meta = await (await fetch(`${env.server.url}/api/logs/meta`)).json();
+      expect(meta.sources).toContain("dashboard");
     } finally {
       await env.server.close();
       await rm(env.dir, { recursive: true, force: true });

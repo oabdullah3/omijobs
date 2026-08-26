@@ -6,10 +6,12 @@ import { fileURLToPath } from "node:url";
 import { runCronCommand } from "./cronCli.js";
 import { runAnalyzeCommand } from "./analysisCli.js";
 import { runDbCommand } from "./dbCli.js";
+import { runLogsCommand } from "./logsCli.js";
 import { resolveBaseRetention } from "./dashboardConfig.js";
 import { startDashboard } from "./dashboardServer.js";
 import { adapters } from "./registry.js";
-import { exitCode, normalizeQueries, runPipeline } from "./runtime.js";
+import { exitCode, normalizeQueries, runPipeline, timestampId } from "./runtime.js";
+import { createLogger, errorData } from "./logger.js";
 import type { AdapterStatus, DedupedCase, DroppedCase, RunConfig, RunSummary } from "./types.js";
 import { ensureUserFiles } from "./userPaths.js";
 
@@ -105,6 +107,7 @@ Commands:
   run [--config <path>]   Run a job sweep now (the default when no command is given)
   cron ...                Manage the cron gateway and scheduled jobs
   db ...                  List and delete aggregate DBs
+  logs ...                Query the structured event log
   dashboard [--port N]    Open the web dashboard (default port 5211)
 
 Options:
@@ -355,6 +358,10 @@ async function runCommand(argv: string[]): Promise<number> {
     const queries = normalizeQueries(config.global?.queries);
     const multiQuery = queries.length > 1;
     const trigger = process.env.OMI_JOB_FETCH_TRIGGER;
+    const jobId = process.env.OMI_JOB_FETCH_JOB_ID ?? null;
+    const now = new Date();
+    const runId = timestampId(now);
+    const logger = createLogger({ source: "run", runId, jobId });
 
     const renderer = createRenderer();
     const progress = createProgressFile();
@@ -373,20 +380,31 @@ async function runCommand(argv: string[]): Promise<number> {
     };
 
     const stop = createStopWatch(process.env.OMI_JOB_FETCH_STOP_FILE);
+    const enabledAdapters = adapters
+      .filter((a) => (config.portals.enabled ?? []).includes(a.manifest.id) || (config.ats.enabled ?? []).includes(a.manifest.id))
+      .map((a) => a.manifest.id);
+    logger.info("run.started", "run started", { config: found.path, queries, adapters: enabledAdapters, trigger: trigger ?? null });
     const { jobsFile, summary } = await runPipeline(config, adapters, {
       outputDir: resolve(dirname(found.path), config.outputDir ?? "output"),
       retentionDays: resolveBaseRetention(parsed.configPath ? dirname(found.path) : USER_STATE_DIR),
+      now,
       ...(trigger ? { trigger } : {}),
       aborted: stop.aborted,
       onAdapterStart: (index, total, adapterId, query) => {
         boundary(`[${index}/${total}] running ${adapterId}${multiQuery ? ` · "${query}"` : ""} …`);
+        logger.info("run.adapter.start", `running ${adapterId}`, { index, total, adapterId, query: query ?? null });
       },
       onAdapterDone: (index, total, status, query) => {
         boundary(`[${index}/${total}]${statusLine(status)}${multiQuery ? ` · "${query}"` : ""}`);
+        logger.info("run.adapter.done", `${status.adapter} ${status.status}`, { adapterId: status.adapter, status: status.status, jobCount: status.jobCount ?? 0, durationMs: status.durationMs ?? 0, ...(status.error ? { error: status.error } : {}) });
       },
       onProgress: (adapterId, status) => {
         live(`  ${adapterId} · ${status}`);
+        logger.info("run.progress", `${adapterId} · ${status}`, { adapterId });
       },
+    }).catch((error) => {
+      logger.error("run.error", "run failed", errorData(error));
+      throw error;
     });
     stop.dispose();
     boundary(`Wrote ${fmt(summary.jobs)} jobs to ${jobsFile}`);
@@ -420,6 +438,13 @@ async function runCommand(argv: string[]): Promise<number> {
       ...(summary.stopped ? ["stopped"] : []),
     ].join(" · ");
     progress.result(resultText);
+    logger.info(summary.stopped ? "run.stopped" : "run.finished", resultText, {
+      jobs: summary.jobs,
+      dropped: summary.dropped,
+      duplicatesRemoved: summary.duplicatesRemoved,
+      ...(summary.db ? { db: summary.db } : {}),
+      ...(summary.dbError ? { dbError: summary.dbError } : {}),
+    });
     return summary.stopped ? 130 : exitCode(summary);
   } finally {
     marker.clear();
@@ -440,6 +465,8 @@ async function main(): Promise<void> {
     code = await runDashboardCommand(argv.slice(1));
   } else if (argv[0] === "db") {
     code = await runDbCommand(argv.slice(1));
+  } else if (argv[0] === "logs") {
+    code = runLogsCommand(argv.slice(1));
   } else {
     // Bare `omijobs [--config …]` behaves as `omijobs run`.
     code = await runCommand(argv);

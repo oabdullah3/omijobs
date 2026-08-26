@@ -4,6 +4,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runAnalysis } from "../src/analysis.js";
+import { AuthConfigError } from "../src/analysisProvider.js";
+import { createLogger, queryLogs } from "../src/logger.js";
 import type { AnalysisProviderConfig } from "../src/types.js";
 
 const require = createRequire(import.meta.url);
@@ -37,5 +39,20 @@ describe("runAnalysis", () => {
       const summary = await runAnalysis(base(first.file, async () => { calls++; return JSON.stringify({ score: 1, reason: "x" }); }, () => calls > 0));
       expect(summary.outcome).toBe("stopped");
     } finally { await rm(first.dir, { recursive: true, force: true }); }
+  });
+  it("emits per-job analysis events and an aborting provider.fail", async () => {
+    const { dir, file } = await fixture();
+    const logDir = join(dir, "logs");
+    const logger = createLogger({ source: "analysis", runId: "a1", jobId: "base" }, logDir);
+    try {
+      await runAnalysis({
+        ...base(file, async () => { throw new AuthConfigError("401", 401); }),
+        logger,
+      });
+      const { events } = queryLogs({ source: "analysis" }, logDir);
+      expect(events.some((e) => e.event === "analysis.started")).toBe(true);
+      expect(events.some((e) => e.event === "analysis.provider.fail")).toBe(true);
+      expect(events.some((e) => e.event === "analysis.error")).toBe(true);
+    } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

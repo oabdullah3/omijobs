@@ -1,4 +1,5 @@
 import type { AnalysisProviderConfig } from "./types.js";
+import type { Logger } from "./logger.js";
 
 export interface ScoreReason { score: number; reason: string; }
 export interface ChatMessage { role: "system" | "user"; content: string; }
@@ -66,6 +67,7 @@ export async function callProvider(
   messages: ChatMessage[],
   fetchImpl: FetchLike = fetch,
   sleep: SleepLike = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  logger?: Logger,
 ): Promise<string> {
   if (!apiKey) throw new AuthConfigError("provider API key is missing");
   const endpoint = `${provider.baseUrl.replace(/\/$/, "")}/chat/completions`;
@@ -73,6 +75,7 @@ export async function callProvider(
   for (let attempt = 0; attempt < attempts; attempt++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), provider.timeoutMs);
+    logger?.debug("analysis.provider.call", `provider call (attempt ${attempt + 1}/${attempts})`, { attempt: attempt + 1, model: provider.model });
     try {
       const response = await fetchImpl(endpoint, {
         method: "POST",
@@ -83,6 +86,7 @@ export async function callProvider(
       if (response.status === 401 || response.status === 403 || response.status === 404) throw new AuthConfigError(`provider request failed (${response.status})`, response.status);
       if (response.status === 429 || response.status >= 500) {
         if (attempt + 1 >= attempts) throw new TransientProviderError(`provider request failed (${response.status})`, response.status);
+        logger?.warn("analysis.provider.retry", `retrying (attempt ${attempt + 1}/${attempts})`, { attempt: attempt + 1, status: response.status });
         await sleep(retryAfterMs(response) ?? provider.retryBackoffMs * (attempt + 1));
         continue;
       }
@@ -96,6 +100,7 @@ export async function callProvider(
       if (error instanceof AuthConfigError) throw error;
       if (!transient(error)) throw new AuthConfigError(error instanceof Error ? error.message : String(error));
       if (attempt + 1 >= attempts) throw new TransientProviderError(error instanceof Error ? error.message : String(error));
+      logger?.warn("analysis.provider.retry", `retrying (attempt ${attempt + 1}/${attempts})`, { attempt: attempt + 1 });
       await sleep(provider.retryBackoffMs * (attempt + 1));
     } finally { clearTimeout(timer); }
   }
