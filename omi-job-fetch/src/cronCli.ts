@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ACCEPTED_SCHEDULES, defaultSpawnJob, loadCron, outcomeText, parseSchedule, runGateway, saveCron } from "./cron.js";
-import { autostartStatus, registerAutostart, unregisterAutostart } from "./platform.js";
+import { autostartStatus, registerAutostart, unregisterAutostart, writeGatewayVbs } from "./platform.js";
 import type { CronFile, CronJob } from "./types.js";
 import { discoverConfigs } from "./dashboardConfig.js";
 import { ensureUserFiles, userPaths } from "./userPaths.js";
@@ -244,11 +244,9 @@ async function launchGateway(): Promise<number | null> {
     return childPid;
   }
   try {
-    const vbsPath = join(STATE_DIR, "start-gateway.vbs");
-    // WScript.Shell.Run(cmd, 0, False): window style 0 = hidden, don't wait.
-    const cmd = `"${process.execPath}" "${CLI_PATH}" cron gateway`;
-    const vbs = `Set sh = CreateObject("WScript.Shell")\r\nsh.Run "${cmd.replace(/"/g, '""')}", 0, False\r\n`;
-    writeFileSync(vbsPath, vbs);
+    // Hidden launcher: shared with registerAutostart so login + manual starts
+    // use the same windowless path (see writeGatewayVbs).
+    const vbsPath = writeGatewayVbs({ node: process.execPath, cliPath: CLI_PATH });
     const r = spawnSync("wscript.exe", [vbsPath], { stdio: "ignore", windowsHide: true });
     if (r.error) throw r.error;
   } catch {

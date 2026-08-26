@@ -6,7 +6,7 @@ import { join } from "node:path";
 /**
  * OS-level autostart for the cron gateway (no admin rights — all user-level):
  *
- *   Windows: HKCU Run key        — reg add ... "node" "<cli>" cron gateway
+ *   Windows: HKCU Run key        — wscript.exe "<state>\start-gateway.vbs" (hidden window)
  *   macOS:   LaunchAgent plist   — ~/Library/LaunchAgents/com.omijobs.cron.plist, KeepAlive
  *   Linux:   systemd user unit   — ~/.config/systemd/user/omijobs-cron.service, Restart=always
  *
@@ -17,6 +17,8 @@ import { join } from "node:path";
 
 const RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 const VALUE = "omijobs-cron";
+const STATE_DIR = join(homedir(), ".omijobs");
+const GATEWAY_VBS = join(STATE_DIR, "start-gateway.vbs");
 const PLIST = join(homedir(), "Library", "LaunchAgents", "com.omijobs.cron.plist");
 const SYSTEMD_UNIT = join(homedir(), ".config", "systemd", "user", "omijobs-cron.service");
 
@@ -40,13 +42,31 @@ function run(cmd: string, args: string[]): { ok: boolean; stdout: string; error?
   }
 }
 
+/**
+ * Write the hidden-launcher VBS that starts the gateway without a console
+ * window: `WScript.Shell.Run(cmd, 0, False)` — window style 0 = hidden, don't
+ * wait. Returns the VBS path. Shared by `registerAutostart` (login) and
+ * `cronCli`'s `launchGateway` (manual start) so both paths stay in sync.
+ */
+export function writeGatewayVbs(target: AutostartTarget): string {
+  mkdirSync(STATE_DIR, { recursive: true });
+  const cmd = `"${target.node}" "${target.cliPath}" cron gateway`;
+  const vbs = `Set sh = CreateObject("WScript.Shell")\r\nsh.Run "${cmd.replace(/"/g, '""')}", 0, False\r\n`;
+  writeFileSync(GATEWAY_VBS, vbs);
+  return GATEWAY_VBS;
+}
+
 /** Idempotent: registering twice just overwrites. Best-effort, never throws. */
 export function registerAutostart(target: AutostartTarget): AutostartResult {
   if (process.platform === "win32") {
-    const command = `"${target.node}" "${target.cliPath}" cron gateway`;
+    // Launch via wscript (a GUI app) instead of a bare `node` command: node is
+    // a console app, so a bare Run-key entry allocates a visible console window
+    // at login, and closing it kills the gateway process tree.
+    const vbsPath = writeGatewayVbs(target);
+    const command = `wscript.exe "${vbsPath}"`;
     const r = run("reg", ["add", RUN_KEY, "/v", VALUE, "/t", "REG_SZ", "/d", command, "/f"]);
     return r.ok
-      ? { registered: true, mechanism: "Windows HKCU Run key" }
+      ? { registered: true, mechanism: "Windows HKCU Run key (wscript, hidden)" }
       : { registered: false, mechanism: "Windows HKCU Run key", error: r.error ?? r.stdout };
   }
   if (process.platform === "darwin") {
