@@ -91,9 +91,11 @@ omijobs analyze providers list
 omijobs cron add-analysis --name "AI triage" --schedule "daily at 10:00" --db base
 ```
 
-The model returns a `0..10` score and reason. The dashboard recommendation filter
-uses the configured threshold, and existing verdicts are skipped. Retention is
-owned by the base config and shared by normal runs and analysis.
+The model extracts a structured profile from each job description against the
+contract in `analysis.config.base.json` (skills, languages, seniority, salary,
+etc.), stored per-row and surfaced as filters in the dashboard Analysis tab.
+Existing rows are skipped unless re-analyzed with `omijobs analyze --reanalyze`.
+Retention is owned by the base config and shared by normal runs and analysis.
 
 ## Config at a glance
 

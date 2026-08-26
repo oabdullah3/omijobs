@@ -28,17 +28,45 @@ export interface AnalysisProviderConfig {
   retryBackoffMs: number;
 }
 
+/** Structured extraction contract types (see analysisConfig.ts). */
+export type ContractFieldKind = "enum" | "list" | "range" | "number" | "date";
+export type ContractNormalize = "lower" | "canonical-language" | "canonical-license";
+
+export interface ContractField {
+  key: string;
+  kind: ContractFieldKind;
+  multi?: boolean;               // enum/list: allow multiple tags (default false)
+  normalize?: ContractNormalize; // list only
+  values?: string[];             // enum only
+  unit?: string;                 // range metadata label (e.g. "years")
+  currency?: string;             // range metadata label (e.g. "HKD")
+  period?: string;               // range metadata label (e.g. "monthly")
+}
+
+export interface ExtractionContract {
+  schemaVersion: number;
+  fields: ContractField[];
+}
+
+export interface ExtractionResult {
+  schemaVersion: number;
+  /** Raw enum values that fell outside `values`, keyed by field key. */
+  unmatched?: Record<string, string[]>;
+  [key: string]: unknown;
+}
+
 export interface AnalysisSettings {
+  schemaVersion: number;
   systemPrompt: string;
-  recommendedThreshold: number;
   descriptionMaxChars: number;
   enabledProvider: string | null;
   providers: AnalysisProviderConfig[];
+  fields: ContractField[];
 }
 
 export interface AnalysisSettingsPublic {
+  schemaVersion: number;
   systemPrompt: string;
-  recommendedThreshold: number;
   descriptionMaxChars: number;
   enabledProvider: string | null;
   providers: {
@@ -54,6 +82,7 @@ export interface AnalysisSettingsPublic {
     retryBackoffMs: number;
     apiKeyStatus: "set" | "unset";
   }[];
+  fields: ContractField[];
 }
 
 export enum AnalysisRunStatus {

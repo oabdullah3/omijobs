@@ -3,40 +3,64 @@ import { createRequire } from "node:module";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runAnalysis } from "../src/analysis.js";
+import { extractionBlock, runAnalysis } from "../src/analysis.js";
 import { AuthConfigError } from "../src/analysisProvider.js";
 import { createLogger, queryLogs } from "../src/logger.js";
-import type { AnalysisProviderConfig } from "../src/types.js";
+import type { AnalysisProviderConfig, ExtractionContract } from "../src/types.js";
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
 const provider: AnalysisProviderConfig = { id: "test", name: "Test", baseUrl: "https://example.test", model: "model", apiKeyEnv: "KEY", temperature: 0.2, maxTokens: 10, timeoutMs: 1000, retries: 0, retryBackoffMs: 1 };
+const contract: ExtractionContract = { schemaVersion: 1, fields: [{ key: "domain", kind: "list", multi: true, normalize: "lower" }, { key: "employment_type", kind: "enum", multi: false, values: ["full-time", "contract"] }] };
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), "analysis-loop-")); const file = join(dir, "jobs.db"); const db = new DatabaseSync(file);
   db.exec("CREATE TABLE jobs (signature TEXT PRIMARY KEY, posted_at TEXT, job TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'unapplied', analysis TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)");
   const add = db.prepare("INSERT INTO jobs VALUES (?, ?, ?, ?, ?, ?, ?)");
   add.run("new", "2026-08-20", JSON.stringify({ title: "New", description: "long description" }), "unapplied", null, "c", "u");
   add.run("old", "2020-01-01", JSON.stringify({ title: "Old" }), "unapplied", null, "c", "u");
-  add.run("skip", "2026-08-19", JSON.stringify({ title: "Skip" }), "unapplied", JSON.stringify({ score: 9, reason: "already" }), "c", "u");
-  add.run("bad", "2026-08-18", JSON.stringify({ title: "Bad" }), "unapplied", null, "c", "u");
+  add.run("done", "2026-08-19", JSON.stringify({ title: "Done" }), "unapplied", JSON.stringify({ schemaVersion: 1, domain: ["finance"] }), "c", "u");
+  add.run("legacy", "2026-08-18", JSON.stringify({ title: "Legacy" }), "unapplied", JSON.stringify({ score: 9, reason: "old" }), "c", "u");
+  add.run("applied", "2026-08-17", JSON.stringify({ title: "Applied" }), "applied", null, "c", "u");
+  add.run("bad", "2026-08-16", JSON.stringify({ title: "Bad" }), "unapplied", null, "c", "u");
   db.close(); return { dir, file };
 }
-const base = (file: string, callProvider: (messages: any[]) => Promise<string>, aborted?: () => boolean) => ({ file, instructions: "remote internship", systemPrompt: "evaluate", descriptionMaxChars: 5, retentionDays: 30, threshold: 5, provider, callProvider, now: () => new Date("2026-08-21"), aborted });
+const base = (file: string, callProvider: (messages: any[]) => Promise<string>, aborted?: () => boolean) => ({ file, systemPrompt: "extract", descriptionMaxChars: 5, retentionDays: 30, contract, provider, callProvider, now: () => new Date("2026-08-21"), aborted });
+
+describe("extractionBlock", () => {
+  it("lists fields, optionality, and no threshold references", () => {
+    const block = extractionBlock(contract);
+    expect(block).toContain("domain");
+    expect(block).toContain("employment_type");
+    expect(block).toContain("Only include a field when the job description specifies it");
+    expect(block).not.toContain("score");
+    expect(block).not.toContain("threshold");
+  });
+});
 
 describe("runAnalysis", () => {
-  it("analyzes, skips, deletes expired, fails malformed, and reports progress", async () => {
+  it("extracts only unapplied rows, skips analyzed/status rows by default", async () => {
     const { dir, file } = await fixture(); const lines: string[] = [];
     try {
-      const summary = await runAnalysis({ ...base(file, async (messages) => { expect(messages[1].content).toContain("remote internship"); expect(messages[1].content).toContain("long "); return JSON.stringify({ score: 8, reason: "good" }); }), progress: { line: (line) => lines.push(line), result: (line) => lines.push(`result:${line}`) } });
-      expect(summary).toMatchObject({ outcome: "completed", analyzed: 1, skipped: 1, deleted: 1, failed: 1, recommended: 1 });
-      expect(lines.at(-1)).toContain("analyzed 1");
+      const summary = await runAnalysis({ ...base(file, async () => JSON.stringify({ domain: ["tech"] })), progress: { line: (l) => lines.push(l), result: (l) => lines.push(`result:${l}`) } });
+      expect(summary).toMatchObject({ outcome: "completed", analyzed: 2, skipped: 3, deleted: 1, failed: 0 });
+      expect(summary).not.toHaveProperty("recommended");
+      expect(lines.at(-1)).toContain("analyzed 2");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+  it("re-analyzes only non-conforming rows when the toggle is on", async () => {
+    const { dir, file } = await fixture();
+    try {
+      let calls = 0;
+      const summary = await runAnalysis({ ...base(file, async () => { calls++; return JSON.stringify({ domain: ["tech"] }); }), reanalyze: true });
+      expect(summary.analyzed).toBe(3); // new + legacy + bad (done is conforming → skipped)
+      expect(calls).toBe(3);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
   it("stops between rows and aborts on auth/config errors", async () => {
     const first = await fixture();
     try {
       let calls = 0;
-      const summary = await runAnalysis(base(first.file, async () => { calls++; return JSON.stringify({ score: 1, reason: "x" }); }, () => calls > 0));
+      const summary = await runAnalysis(base(first.file, async () => { calls++; return JSON.stringify({ domain: ["tech"] }); }, () => calls > 0));
       expect(summary.outcome).toBe("stopped");
     } finally { await rm(first.dir, { recursive: true, force: true }); }
   });
@@ -45,10 +69,7 @@ describe("runAnalysis", () => {
     const logDir = join(dir, "logs");
     const logger = createLogger({ source: "analysis", runId: "a1", jobId: "base" }, logDir);
     try {
-      await runAnalysis({
-        ...base(file, async () => { throw new AuthConfigError("401", 401); }),
-        logger,
-      });
+      await runAnalysis({ ...base(file, async () => { throw new AuthConfigError("401", 401); }), logger });
       const { events } = queryLogs({ source: "analysis" }, logDir);
       expect(events.some((e) => e.event === "analysis.started")).toBe(true);
       expect(events.some((e) => e.event === "analysis.provider.fail")).toBe(true);

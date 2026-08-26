@@ -139,6 +139,15 @@ a { color: var(--accent); }
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
 .toolbar .input { max-width: 280px; }
 
+/* Faceted extraction filter */
+.facets { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.facet { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 140px; max-width: 240px; }
+.facet .eyebrow { margin-bottom: 6px; }
+.facet-option { display: flex; align-items: center; gap: 6px; font: 12px var(--mono); color: var(--muted); padding: 2px 0; cursor: pointer; }
+.facet-option input { margin: 0; }
+.facet-range { display: flex; align-items: center; gap: 6px; }
+.facet-range .input { width: 72px; padding: 4px 6px; font-size: 12px; }
+
 /* Docs typography */
 .docs h1 { font: 700 30px var(--serif); margin: 0 0 4px; }
 .docs h2 { font: 600 22px var(--serif); margin: 28px 0 8px; }

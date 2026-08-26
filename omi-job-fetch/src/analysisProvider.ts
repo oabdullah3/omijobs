@@ -1,7 +1,6 @@
-import type { AnalysisProviderConfig } from "./types.js";
+import type { AnalysisProviderConfig, ContractField, ContractNormalize, ExtractionContract, ExtractionResult } from "./types.js";
 import type { Logger } from "./logger.js";
 
-export interface ScoreReason { score: number; reason: string; }
 export interface ChatMessage { role: "system" | "user"; content: string; }
 export type FetchLike = typeof fetch;
 export type SleepLike = (ms: number) => Promise<void>;
@@ -36,16 +35,98 @@ function balancedObject(text: string): string | null {
   return null;
 }
 
-export function extractScoreReason(content: unknown): ScoreReason | null {
+export function extractContract(content: unknown, contract: ExtractionContract): ExtractionResult | null {
   if (typeof content !== "string") return null;
-  const withoutFences = content.replace(/```(?:json)?/gi, "");
-  const object = balancedObject(withoutFences);
+  const object = balancedObject(content.replace(/```(?:json)?/gi, ""));
   if (!object) return null;
   let parsed: Record<string, unknown>;
   try { parsed = JSON.parse(object) as Record<string, unknown>; } catch { return null; }
-  const rawScore = typeof parsed.score === "number" ? parsed.score : typeof parsed.score === "string" && parsed.score.trim() !== "" ? Number(parsed.score) : NaN;
-  if (!Number.isFinite(rawScore) || typeof parsed.reason !== "string" || parsed.reason.trim() === "") return null;
-  return { score: Math.max(0, Math.min(10, Math.round(rawScore))), reason: parsed.reason.trim() };
+  const result: ExtractionResult = { schemaVersion: contract.schemaVersion };
+  const unmatched: Record<string, string[]> = {};
+  for (const field of contract.fields) {
+    const raw = parsed[field.key];
+    if (raw === undefined) continue;
+    const value = coerceField(raw, field, unmatched);
+    if (value !== undefined) result[field.key] = value;
+  }
+  if (Object.keys(unmatched).length > 0) result.unmatched = unmatched;
+  return result;
+}
+
+function normalizeTag(value: string, normalize?: ContractNormalize): string {
+  const trimmed = value.trim();
+  if (normalize === "lower" || normalize === "canonical-language" || normalize === "canonical-license") return trimmed.toLowerCase();
+  return trimmed;
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+  return null;
+}
+
+function coerceEnum(raw: unknown, field: ContractField, unmatched: Record<string, string[]>): unknown {
+  const values = field.values ?? [];
+  const tags = Array.isArray(raw) ? raw.map(String) : [String(raw)];
+  const chosen: string[] = [];
+  for (const tag of tags) {
+    const t = tag.trim().toLowerCase();
+    if (!t) continue;
+    if (values.includes(t)) chosen.push(t);
+    else { chosen.push("other"); unmatched[field.key] = [...(unmatched[field.key] ?? []), t]; }
+  }
+  if (chosen.length === 0) return undefined;
+  return field.multi ? [...new Set(chosen)] : chosen[0];
+}
+
+function coerceList(raw: unknown, field: ContractField): unknown {
+  if (!field.multi) {
+    const single = Array.isArray(raw) ? String(raw[0] ?? "") : String(raw);
+    const t = normalizeTag(single, field.normalize);
+    return t ? t : undefined;
+  }
+  const parts = Array.isArray(raw) ? raw : String(raw).split(/[/,;]|\s+and\s+/i);
+  const tags: string[] = [];
+  for (const part of parts) {
+    const t = normalizeTag(String(part), field.normalize);
+    if (t && !tags.includes(t)) tags.push(t);
+  }
+  return tags.length ? tags : undefined;
+}
+
+function coerceRange(raw: unknown): unknown {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+  const obj = raw as Record<string, unknown>;
+  const min = toNumber(obj.min);
+  const max = toNumber(obj.max);
+  const out: Record<string, number> = {};
+  if (min !== null && min >= 0) out.min = min;
+  if (max !== null && max >= 0) out.max = max;
+  return Object.keys(out).length ? out : undefined;
+}
+
+function coerceNumber(raw: unknown): unknown {
+  const n = toNumber(raw);
+  return n === null ? undefined : n;
+}
+
+function coerceDate(raw: unknown): unknown {
+  if (typeof raw !== "string") return undefined;
+  const t = raw.trim();
+  if (!t) return undefined;
+  if (/^\d{4}-\d{2}(-\d{2})?$/.test(t)) return t;
+  const d = Date.parse(t);
+  return Number.isNaN(d) ? undefined : new Date(d).toISOString().slice(0, 10);
+}
+
+function coerceField(raw: unknown, field: ContractField, unmatched: Record<string, string[]>): unknown {
+  switch (field.kind) {
+    case "enum": return coerceEnum(raw, field, unmatched);
+    case "list": return coerceList(raw, field);
+    case "range": return coerceRange(raw);
+    case "number": return coerceNumber(raw);
+    case "date": return coerceDate(raw);
+  }
 }
 
 function retryAfterMs(response: Response): number | null {

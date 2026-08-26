@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { AuthConfigError, TransientProviderError, callProvider, extractScoreReason } from "../src/analysisProvider.js";
-import type { AnalysisProviderConfig } from "../src/types.js";
+import { AuthConfigError, TransientProviderError, callProvider, extractContract } from "../src/analysisProvider.js";
+import type { AnalysisProviderConfig, ExtractionContract } from "../src/types.js";
 
 const provider: AnalysisProviderConfig = {
   id: "test", name: "Test", baseUrl: "https://example.test/v1", model: "test-model", apiKeyEnv: "TEST_KEY",
@@ -8,15 +8,36 @@ const provider: AnalysisProviderConfig = {
 };
 const ok = (content: unknown) => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
 
-describe("extractScoreReason", () => {
-  it("extracts fenced, surrounded, numeric-string output and clamps", () => {
-    expect(extractScoreReason('before ```json\n{"score":"12.4","reason":" strong "}\n``` after')).toEqual({ score: 10, reason: "strong" });
-    expect(extractScoreReason('{"score":-2,"reason":"poor"}')).toEqual({ score: 0, reason: "poor" });
+const contract: ExtractionContract = {
+  schemaVersion: 1,
+  fields: [
+    { key: "employment_type", kind: "enum", multi: false, values: ["full-time", "part-time", "contract"] },
+    { key: "skills", kind: "list", multi: true, normalize: "lower" },
+    { key: "salary", kind: "range", currency: "HKD", period: "monthly" },
+    { key: "years_experience", kind: "range", unit: "years" },
+    { key: "job_start_date", kind: "date" },
+  ],
+};
+
+describe("extractContract", () => {
+  it("coerces enum, list, range, and date; omits absent fields", () => {
+    const result = extractContract('```json\n{"employment_type":"Full-Time","skills":"SQL, Excel and Python","salary":{"min":"38000","max":45000},"job_start_date":"2026-09-01"}\n```', contract);
+    expect(result).toEqual({ schemaVersion: 1, employment_type: "full-time", skills: ["sql", "excel", "python"], salary: { min: 38000, max: 45000 }, job_start_date: "2026-09-01" });
   });
-  it("rejects malformed or incomplete verdicts", () => {
-    expect(extractScoreReason("no json")).toBeNull();
-    expect(extractScoreReason('{"score":"x","reason":"bad"}')).toBeNull();
-    expect(extractScoreReason('{"score":4,"reason":""}')).toBeNull();
+  it("buckets unknown enum values to other and records unmatched", () => {
+    const result = extractContract('{"employment_type":"freelance"}', contract);
+    expect(result).toEqual({ schemaVersion: 1, employment_type: "other", unmatched: { employment_type: ["freelance"] } });
+  });
+  it("returns schemaVersion-only for zero recognized fields (done, not failed)", () => {
+    expect(extractContract('{"nothing":"here"}', contract)).toEqual({ schemaVersion: 1 });
+    expect(extractContract('{}', contract)).toEqual({ schemaVersion: 1 });
+  });
+  it("returns null for malformed output", () => {
+    expect(extractContract("no json", contract)).toBeNull();
+    expect(extractContract(123 as unknown, contract)).toBeNull();
+  });
+  it("drops invalid range values and non-ISO dates", () => {
+    expect(extractContract('{"salary":{"min":-5,"max":10},"job_start_date":"not-a-date"}', contract)).toEqual({ schemaVersion: 1, salary: { max: 10 } });
   });
 });
 

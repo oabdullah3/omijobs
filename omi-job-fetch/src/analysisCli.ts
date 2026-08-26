@@ -49,7 +49,7 @@ function stateFromEnvironment(fallback: ReturnType<typeof resolveAnalysisState>)
 }
 function summaryFile(file: string, summary: AnalysisSummary): void { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, `${JSON.stringify(summary, null, 2)}\n`); }
 
-export interface AnalysisCliOptions { packageDir?: string; stateDir?: string; instructions?: string; }
+export interface AnalysisCliOptions { packageDir?: string; stateDir?: string; reanalyze?: boolean; }
 export async function runAnalysisCommand(dbKey: string, options: AnalysisCliOptions = {}): Promise<number> {
   const packageDir = resolve(options.packageDir ?? PACKAGE_DIR); const stateDir = options.stateDir ?? ANALYSIS_STATE_DIR; const user = ensureUserFiles(packageDir, stateDir); const state = stateFromEnvironment(resolveAnalysisState(stateDir)); const dbPath = dbPathForKey(user.stateDir, user.cronFile, dbKey);
   if (!existsSync(dbPath)) throw new Error(`DB does not exist: ${dbPath}`);
@@ -66,8 +66,9 @@ export async function runAnalysisCommand(dbKey: string, options: AnalysisCliOpti
   const logger = createLogger({ source: "analysis", runId: timestampId(new Date()), jobId: dbKey });
   try {
     const summary = await runAnalysis({
-      file: dbPath, instructions: options.instructions ?? "", systemPrompt: settings.systemPrompt, descriptionMaxChars: settings.descriptionMaxChars,
-      retentionDays: resolveBaseRetention(stateDir) ?? 30, threshold: settings.recommendedThreshold, provider,
+      file: dbPath, systemPrompt: settings.systemPrompt, descriptionMaxChars: settings.descriptionMaxChars,
+      retentionDays: resolveBaseRetention(stateDir) ?? 30, contract: { schemaVersion: settings.schemaVersion, fields: settings.fields },
+      reanalyze: options.reanalyze ?? false, provider,
       callProvider: (messages) => callProvider(provider, apiKey, messages, fetch, undefined, logger),
       aborted: () => existsSync(state.stop(dbKey)),
       logger,
@@ -92,7 +93,7 @@ export async function runAnalyzeCommand(argv: string[], options: AnalysisCliOpti
   const [command, target, ...rest] = argv; const packageDir = resolve(options.packageDir ?? PACKAGE_DIR); const stateDir = options.stateDir ?? ANALYSIS_STATE_DIR;
   if (!command || command === "run") {
     const runOptions = { ...options };
-    for (let i = 0; i < rest.length; i++) if (rest[i] === "--instructions") runOptions.instructions = rest[++i] ?? "";
+    for (let i = 0; i < rest.length; i++) if (rest[i] === "--reanalyze") runOptions.reanalyze = true;
     return runAnalysisCommand(command === "run" ? target : command, runOptions);
   }
   if (command === "status") { console.log(JSON.stringify(analysisStatus(packageDir, stateDir), null, 2)); return 0; }

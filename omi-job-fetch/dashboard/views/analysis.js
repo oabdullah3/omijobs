@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { el, esc, fmtRel, toast, openModal } from "../app.js";
 
-const state = { data: null, timer: null, db: "", instructions: "", testResults: {} };
+const state = { data: null, timer: null, db: "", reanalyze: false, testResults: {} };
 
 const PROVIDER_DEFAULTS = { temperature: 0.2, maxTokens: 400, timeoutMs: 60000, retries: 3, retryBackoffMs: 2000 };
 const EMPTY = { settings: { providers: [], enabledProvider: null }, dbs: [], runningDb: null };
@@ -69,16 +69,11 @@ export function unmount() {
 }
 
 async function run() {
-  try { await api.post("/api/analysis/run", { db: state.db, instructions: state.instructions }); toast("Analysis started", "good"); refresh(); }
+  try { await api.post("/api/analysis/run", { db: state.db, reanalyze: state.reanalyze }); toast(state.reanalyze ? "Re-analyze started" : "Extraction started", "good"); refresh(); }
   catch (error) { toast(error.message, "warn"); }
 }
 async function stop() {
   try { await api.post("/api/analysis/stop", { db: state.db }); toast("Stopping analysis", "warn"); refresh(); }
-  catch (error) { toast(error.message, "warn"); }
-}
-async function mark(db) {
-  if (!confirm("Mark every analyzed job below the recommendation threshold as uninterested?")) return;
-  try { const result = await api.post(`/api/analysis/${encodeURIComponent(db)}/mark-unrecommended`); toast(`${result.count} jobs marked uninterested`, "good"); refresh(); }
   catch (error) { toast(error.message, "warn"); }
 }
 
@@ -221,12 +216,10 @@ function providersCard(s) {
 
 function settingsCard(s) {
   const systemPrompt = el("textarea", { class: "input", rows: 5, value: s.systemPrompt ?? "" });
-  const threshold = el("input", { class: "input", type: "number", step: "0.1", min: "0", max: "10", value: s.recommendedThreshold ?? 5 });
   const descriptionMaxChars = el("input", { class: "input", type: "number", min: "1", value: s.descriptionMaxChars ?? 2000 });
   const form = el("form", { class: "form-grid" },
-    el("div", { class: "field" }, el("label", {}, "System prompt"), systemPrompt, el("div", { class: "hint" }, "Instructions sent to the model for every job evaluation.")),
+    el("div", { class: "field" }, el("label", {}, "System prompt"), systemPrompt, el("div", { class: "hint" }, "Persona sent to the model; the extraction instructions are generated from the contract fields.")),
     el("div", { class: "form-row" },
-      el("div", { class: "field" }, el("label", {}, "Recommendation threshold (0–10)"), threshold),
       el("div", { class: "field" }, el("label", {}, "Description max chars"), descriptionMaxChars)),
     el("button", { class: "btn btn-primary", type: "submit" }, "Save settings"));
   form.addEventListener("submit", async (event) => {
@@ -234,7 +227,6 @@ function settingsCard(s) {
     try {
       await api.put("/api/analysis/settings", {
         systemPrompt: systemPrompt.value,
-        recommendedThreshold: Number(threshold.value),
         descriptionMaxChars: Number(descriptionMaxChars.value),
       });
       toast("Settings saved", "good");
@@ -244,8 +236,8 @@ function settingsCard(s) {
     }
   });
   return el("div", { class: "card" },
-    el("p", { class: "eyebrow" }, "Evaluation settings"),
-    el("h3", {}, "Prompt & threshold"),
+    el("p", { class: "eyebrow" }, "Extraction settings"),
+    el("h3", {}, "Prompt"),
     form);
 }
 
@@ -256,8 +248,7 @@ function renderDbCards() {
       el("h3", {}, esc(db.label)),
       db.running ? el("span", { class: "badge live" }, "analyzing") : null),
     el("p", { class: "hint" }, db.running ? (db.summary ?? "working") : (db.status ? `${db.status} · ${fmtRel(db.lastRun)}` : "never analyzed")),
-    el("p", {}, `${db.analyzed} analyzed · ${db.pending} pending · ${db.recommended} recommended`),
-    el("button", { class: "btn small btn-danger", disabled: !db.exists || db.running, onclick: () => mark(db.key) }, "Mark below threshold uninterested")));
+    el("p", {}, `${db.analyzed} analyzed · ${db.pending} pending`)));
 }
 
 function renderActions() {
@@ -265,11 +256,15 @@ function renderActions() {
   const running = Boolean(data().runningDb);
   const dbOptions = data().dbs ?? [];
   return [
-    !enabled ? el("div", { class: "callout warn" }, el("p", {}, "No AI provider configured — analysis is disabled.")) : null,
+    !enabled ? el("div", { class: "callout warn" }, el("p", {}, "No AI provider configured — extraction is disabled.")) : null,
     running ? el("div", { class: "callout" },
-      el("p", {}, `This DB is still being analyzed: ${esc(data().runningDb)}`),
+      el("p", {}, `This DB is still being extracted: ${esc(data().runningDb)}`),
       el("button", { class: "btn btn-danger", onclick: stop }, "Stop")) : null,
-    el("button", { class: "btn btn-primary", disabled: !enabled || !dbOptions.length || running, onclick: run }, "Run analysis"),
+    el("div", { class: "toolbar" },
+      el("button", { class: "btn btn-primary", disabled: !enabled || !dbOptions.length || running, onclick: run }, "Run extraction"),
+      el("label", { class: "inline" },
+        el("input", { type: "checkbox", checked: state.reanalyze, onchange: (e) => { state.reanalyze = e.target.checked; } }),
+        " Re-analyze non-conforming rows")),
   ];
 }
 
@@ -277,15 +272,13 @@ export async function render() {
   if (!state.data) await refresh();
   const s = data();
   const dbOptions = s.dbs.map((db) => el("option", { value: db.key }, db.label));
-  const instruction = el("textarea", { class: "input", rows: 4, placeholder: "What should the evaluator prioritize?", value: state.instructions, oninput: (event) => { state.instructions = event.target.value; } });
   const dbSelect = el("select", { id: "analysis-db-select", class: "select", value: state.db, onchange: (event) => { state.db = event.target.value; } }, dbOptions);
   return el("div", { id: "analysis-root" },
     el("p", { class: "eyebrow" }, "Analysis"),
-    el("h2", { class: "docs" }, "AI job recommendations"),
+    el("h2", { class: "docs" }, "AI job extraction"),
     el("div", { class: "card" },
-      el("p", { class: "eyebrow" }, "Run analysis"),
+      el("p", { class: "eyebrow" }, "Run extraction"),
       dbSelect,
-      instruction,
       el("div", { id: "analysis-actions" }, ...renderActions())),
     el("div", { id: "analysis-cards" }, ...renderDbCards()),
     el("div", { id: "analysis-providers" }, providersCard(s.settings)),

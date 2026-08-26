@@ -14,7 +14,6 @@ import { getAnalysisDashboardState } from "./dashboardAnalysis.js";
 import { addProvider, enableProvider, loadAnalysisSettings, providerApiKeyStatus, removeProvider, resolveProviderApiKey, saveAnalysisSettings, toPublicSettings, updateProvider, validateSettings, writeProviderApiKey } from "./analysisConfig.js";
 import { callProvider } from "./analysisProvider.js";
 import { resolveAnalysisState, readActiveMarker } from "./analysisCli.js";
-import { bulkMarkBelowThreshold } from "./analysisDb.js";
 import { createLogger, errorData, logMeta, queryLogs } from "./logger.js";
 import type { RunConfig } from "./types.js";
 import { ensureUserFiles, userPaths } from "./userPaths.js";
@@ -165,9 +164,8 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
       const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((item) => item.id === dbKey);
       if (!meta || !meta.db.exists) { sendJson(res, 400, { error: `No existing DB for "${dbKey}"` }); return; }
       mkdirSync(analysisState.dir, { recursive: true });
-      const instructions = String(body.instructions ?? "");
       const args = [cliPath, "analyze", "run", dbKey];
-      if (instructions) args.push("--instructions", instructions);
+      if (body.reanalyze === true) args.push("--reanalyze");
       const child = spawn(process.execPath, args, { detached: true, windowsHide: true, stdio: "ignore", env: { ...process.env, OMI_JOB_FETCH_TRIGGER: "dashboard", OMI_JOB_FETCH_PROGRESS_FILE: analysisState.log(dbKey), OMI_JOB_FETCH_STOP_FILE: analysisState.stop(dbKey), OMI_JOB_FETCH_RUN_MARKER: analysisState.active } });
       child.unref(); dlog.info("dashboard.run", "analysis run triggered", { kind: "analysis", db: dbKey }); broadcast("analysis", { runningDb: dbKey }); sendJson(res, 200, { ok: true, pid: child.pid ?? null }); return;
     }
@@ -217,8 +215,6 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
       return;
     }
     if (path === "/api/analysis/settings" && method === "PUT") { try { const body = await readBody(req) as Record<string, unknown>; const current = loadAnalysisSettings(packageDir, stateDir); const next = validateSettings({ ...current, ...body }); saveAnalysisSettings(stateDir, next); sendJson(res, 200, { settings: toPublicSettings(next, stateDir) }); } catch (error) { sendJson(res, 400, { error: errMsg(error) }); } return; }
-    const markRoute = /^\/api\/analysis\/([^/]+)\/mark-unrecommended$/i.exec(path);
-    if (markRoute && method === "POST") { const settings = loadAnalysisSettings(packageDir, stateDir); const meta = discoverConfigs({ packageDir: configDir, cronFile }).find((item) => item.id === decodeURIComponent(markRoute[1])); if (!meta || !meta.db.exists) { sendJson(res, 404, { error: "DB not found" }); return; } const count = bulkMarkBelowThreshold(meta.db.path, settings.recommendedThreshold); broadcast("db", {}); sendJson(res, 200, { ok: true, count }); return; }
 
     if (path === "/api/configs" && method === "GET") {
       const metas = discoverConfigs({ packageDir: configDir, cronFile });
@@ -538,7 +534,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
       // A never-created DB (config db disabled or zero runs so far) isn't an
       // error — the jobs table is just empty.
       if (!meta.db.enabled || !existsSync(meta.db.path)) {
-        sendJson(res, 200, { total: 0, rows: [] });
+        sendJson(res, 200, { total: 0, rows: [], fields: loadAnalysisSettings(packageDir, stateDir).fields });
         return;
       }
       const q = url.searchParams;
@@ -548,11 +544,10 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
         q: q.get("q") ?? undefined,
         sort: q.get("sort") ?? undefined,
         dir: dirParam === "asc" || dirParam === "desc" ? dirParam : undefined,
-        minScore: q.get("recommended") === "1" ? loadAnalysisSettings(packageDir, stateDir).recommendedThreshold : undefined,
         limit: Number(q.get("limit") ?? 200),
         offset: Number(q.get("offset") ?? 0),
       });
-      sendJson(res, 200, result);
+      sendJson(res, 200, { ...result, fields: loadAnalysisSettings(packageDir, stateDir).fields });
       return;
     }
 

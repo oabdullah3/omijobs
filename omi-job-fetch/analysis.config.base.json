@@ -1,6 +1,6 @@
 {
-  "systemPrompt": "You are a job-matching evaluator. The user's instructions describe exactly what they want in a job. Score each posting against those instructions, 0-10: 0 = irrelevant; 1-3 = poor match, misses core requirements; 4-6 = partial, notable gaps; 7-9 = strong, minor gaps; 10 = perfect. In `reason`, write 1-3 concise sentences: what matched, what missed, and why the score. Respond with ONLY one JSON object - no prose, no code fences: {\"score\": <integer 0-10>, \"reason\": \"<string>\"}",
-  "recommendedThreshold": 5,
+  "schemaVersion": 1,
+  "systemPrompt": "You are a job-description extractor. Read the job posting and output ONLY the fields that are explicitly stated, as a single JSON object. Never invent or assume a value; when a field is not specified in the posting, omit it entirely.",
   "descriptionMaxChars": 4000,
   "enabledProvider": null,
   "providers": [
@@ -16,5 +16,22 @@
       "retries": 3,
       "retryBackoffMs": 2000
     }
+  ],
+  "fields": [
+    { "key": "domain", "kind": "list", "multi": true, "normalize": "lower" },
+    { "key": "industry", "kind": "list", "multi": true, "normalize": "lower" },
+    { "key": "mandatory_languages", "kind": "list", "multi": true, "normalize": "canonical-language" },
+    { "key": "preferred_languages", "kind": "list", "multi": true, "normalize": "canonical-language" },
+    { "key": "skills", "kind": "list", "multi": true, "normalize": "lower" },
+    { "key": "licenses", "kind": "list", "multi": true, "normalize": "canonical-license" },
+    { "key": "education", "kind": "enum", "multi": false, "values": ["phd", "masters", "bachelors-y1", "bachelors-y2", "bachelors-y3", "bachelors-y4", "diploma", "secondary"] },
+    { "key": "employment_type", "kind": "enum", "multi": false, "values": ["full-time", "part-time", "contract", "internship", "graduate"] },
+    { "key": "job_duration", "kind": "enum", "multi": false, "values": ["permanent", "fixed-term"] },
+    { "key": "seniority", "kind": "enum", "multi": false, "values": ["intern", "graduate", "assistant", "officer", "associate", "manager", "senior-manager", "director", "vp", "head"] },
+    { "key": "work_arrangement", "kind": "enum", "multi": false, "values": ["onsite", "hybrid", "remote"] },
+    { "key": "years_experience", "kind": "range", "unit": "years" },
+    { "key": "contract_length_months", "kind": "number" },
+    { "key": "salary", "kind": "range", "currency": "HKD", "period": "monthly" },
+    { "key": "job_start_date", "kind": "date" }
   ]
 }

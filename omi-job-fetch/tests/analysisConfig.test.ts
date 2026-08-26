@@ -5,6 +5,8 @@ import {
   providerApiKeyStatus,
   writeProviderApiKey,
   toPublicSettings,
+  validateContract,
+  validateField,
   AnalysisProviderConfig,
   AnalysisSettings,
   AnalysisSettingsPublic,
@@ -62,7 +64,7 @@ describe("AnalysisConfig - loadAnalysisSettings", () => {
     const defaultSettings = loadAnalysisSettings(pkgDir, defaultDir);
     expect(defaultSettings.systemPrompt).toBeDefined();
     expect(defaultSettings.providers).toBeInstanceOf(Array);
-    expect(defaultSettings.recommendedThreshold).toBe(5);
+    expect(defaultSettings.schemaVersion).toBe(1);
   });
 });
 
@@ -84,7 +86,8 @@ describe("AnalysisConfig - saveAnalysisSettings", () => {
     const tempDir = path.join(pkgDir, ".analysis-state-new-dir");
     const settings = {
       systemPrompt: "Test prompt",
-      recommendedThreshold: 0.8,
+      schemaVersion: 1,
+      fields: [],
       descriptionMaxChars: 3000,
       enabledProvider: "openrouter",
       providers: [
@@ -215,8 +218,9 @@ describe("AnalysisConfig - writeProviderApiKey", () => {
 describe("AnalysisConfig - AnalysisSettingsPublic projection", () => {
   it("exposes only apiKeyStatus and never the actual key value", () => {
     const settings: AnalysisSettings = {
+      schemaVersion: 1,
       systemPrompt: "Test prompt",
-      recommendedThreshold: 5,
+      fields: [],
       descriptionMaxChars: 5000,
       enabledProvider: "openrouter",
       providers: [
@@ -237,9 +241,9 @@ describe("AnalysisConfig - AnalysisSettingsPublic projection", () => {
 
     const publicSettings = toPublicSettings(settings);
 
-    // Should have the expected fields
+    expect(publicSettings.schemaVersion).toBe(1);
     expect(publicSettings.systemPrompt).toBe("Test prompt");
-    expect(publicSettings.recommendedThreshold).toBe(5);
+    expect(publicSettings.fields).toEqual([]);
     expect(publicSettings.descriptionMaxChars).toBe(5000);
     expect(publicSettings.enabledProvider).toBe("openrouter");
     expect(publicSettings.providers.length).toBe(1);
@@ -252,8 +256,9 @@ describe("AnalysisConfig - AnalysisSettingsPublic projection", () => {
 
   it("handles null enabledProvider", () => {
     const settings: AnalysisSettings = {
+      schemaVersion: 1,
       systemPrompt: "Test prompt",
-      recommendedThreshold: 5,
+      fields: [],
       descriptionMaxChars: 5000,
       enabledProvider: null,
       providers: [],
@@ -271,5 +276,47 @@ describe("AnalysisConfig - AnalysisRunStatus enum", () => {
     expect(AnalysisRunStatus.Running).toBe("running");
     expect(AnalysisRunStatus.Completed).toBe("completed");
     expect(AnalysisRunStatus.Failed).toBe("failed");
+  });
+});
+
+describe("validateField", () => {
+  it("accepts a valid enum and list field", () => {
+    expect(validateField({ key: "employment_type", kind: "enum", multi: false, values: ["full-time", "contract"] })).toEqual({ key: "employment_type", kind: "enum", multi: false, values: ["full-time", "contract"] });
+    expect(validateField({ key: "skills", kind: "list", multi: true, normalize: "lower" })).toEqual({ key: "skills", kind: "list", multi: true, normalize: "lower" });
+  });
+  it("rejects bad keys, kinds, and enum-without-values", () => {
+    expect(() => validateField({ key: "Bad Key", kind: "list" })).toThrow(/snake_case/);
+    expect(() => validateField({ key: "x", kind: "nope" })).toThrow(/invalid kind/);
+    expect(() => validateField({ key: "x", kind: "enum" })).toThrow(/values/);
+    expect(() => validateField({ key: "x", kind: "list", values: ["a"] })).toThrow(/only allowed on enum/);
+  });
+});
+
+describe("validateContract", () => {
+  it("rejects duplicate field keys and non-positive schemaVersion", () => {
+    expect(() => validateContract({ schemaVersion: 0, fields: [] })).toThrow(/positive integer/);
+    expect(() => validateContract({ schemaVersion: 1, fields: [{ key: "a", kind: "list" }, { key: "a", kind: "list" }] })).toThrow(/unique/);
+  });
+  it("round-trips a valid contract", () => {
+    const contract = validateContract({ schemaVersion: 2, fields: [{ key: "salary", kind: "range", currency: "HKD", period: "monthly" }] });
+    expect(contract.schemaVersion).toBe(2);
+    expect(contract.fields[0].currency).toBe("HKD");
+  });
+});
+
+describe("AnalysisConfig - extraction contract settings", () => {
+  it("seeds schemaVersion and fields from the bundled base config", () => {
+    const settings = loadAnalysisSettings(pkgDir, stateDir);
+    expect(settings.schemaVersion).toBe(1);
+    expect(settings.fields.length).toBeGreaterThan(0);
+    expect(settings.fields.some((f) => f.key === "employment_type")).toBe(true);
+    expect(settings).not.toHaveProperty("recommendedThreshold");
+  });
+  it("exposes schemaVersion and fields publicly", () => {
+    const settings = loadAnalysisSettings(pkgDir, stateDir);
+    const pub = toPublicSettings(settings);
+    expect(pub.schemaVersion).toBe(1);
+    expect(pub.fields.length).toBe(settings.fields.length);
+    expect(pub).not.toHaveProperty("recommendedThreshold");
   });
 });

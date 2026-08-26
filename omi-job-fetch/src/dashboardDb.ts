@@ -1,7 +1,6 @@
 import { existsSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import type { ConfigMeta } from "./dashboardConfig.js";
-import { extractScoreReason } from "./analysisProvider.js";
 
 // node:sqlite via createRequire — see the note in src/db.ts for why.
 const require = createRequire(import.meta.url);
@@ -22,13 +21,12 @@ export interface DbInfo {
 export interface JobListQuery {
   status?: string;
   q?: string;
-  sort?: string;   // "posted_at" | "title" | "company" | "location" | "status" | "score"
+  sort?: string;   // "posted_at" | "title" | "company" | "location" | "status"
   dir?: "asc" | "desc";
   limit?: number;
   offset?: number;
-  minScore?: number;
 }
-export interface JobListRow { signature: string; status: string; postedAt: string | null; analysis: unknown; score: number | null; job: Record<string, unknown>; }
+export interface JobListRow { signature: string; status: string; postedAt: string | null; analysis: Record<string, unknown> | null; job: Record<string, unknown>; }
 export interface JobListResult { total: number; rows: JobListRow[]; }
 export interface JobDetail {
   signature: string;
@@ -97,7 +95,6 @@ const SORTERS: Record<string, (r: JobListRow) => string | null> = {
   company: (r) => String(r.job.company ?? ""),
   location: (r) => String(r.job.location ?? ""),
   status: (r) => r.status,
-  score: (r) => r.score === null ? null : String(r.score).padStart(2, "0"),
 };
 
 export function listJobs(file: string, query: JobListQuery = {}): JobListResult {
@@ -115,8 +112,7 @@ export function listJobs(file: string, query: JobListQuery = {}): JobListResult 
         signature: String(r.signature),
         status: String(r.status),
         postedAt: nullOrString(r.posted_at),
-        analysis: r.analysis === null || r.analysis === undefined ? null : (() => { try { return JSON.parse(String(r.analysis)); } catch { return null; } })(),
-        score: (() => { const verdict = extractScoreReason(r.analysis === null || r.analysis === undefined ? null : String(r.analysis)); return verdict?.score ?? null; })(),
+        analysis: r.analysis === null || r.analysis === undefined ? null : (() => { try { return JSON.parse(String(r.analysis)) as Record<string, unknown>; } catch { return null; } })(),
         job: parseJob(r.job),
       }),
     );
@@ -130,7 +126,6 @@ export function listJobs(file: string, query: JobListQuery = {}): JobListResult 
         return hay.includes(needle);
       });
     }
-    if (query.minScore !== undefined) filtered = filtered.filter((r) => r.score !== null && r.score >= query.minScore!);
 
     const sort = query.sort && Object.hasOwn(SORTERS, query.sort) ? query.sort : "posted_at";
     const dir = query.dir === "asc" ? 1 : -1;

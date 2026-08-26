@@ -1,14 +1,50 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AnalysisProviderConfig, AnalysisSettings, AnalysisSettingsPublic } from "./types.js";
+import type { AnalysisProviderConfig, AnalysisSettings, AnalysisSettingsPublic, ContractField, ContractFieldKind, ContractNormalize, ExtractionContract } from "./types.js";
 export { AnalysisRunStatus } from "./types.js";
 
-export type { AnalysisProviderConfig, AnalysisSettings, AnalysisSettingsPublic } from "./types.js";
+export type { AnalysisProviderConfig, AnalysisSettings, AnalysisSettingsPublic, ContractField, ContractFieldKind, ContractNormalize, ExtractionContract } from "./types.js";
 
 const SETTINGS_FILE = "analysis.json";
+const FIELD_KINDS: ContractFieldKind[] = ["enum", "list", "range", "number", "date"];
+const NORMALIZERS: ContractNormalize[] = ["lower", "canonical-language", "canonical-license"];
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+export function validateField(raw: unknown): ContractField {
+  if (typeof raw !== "object" || raw === null) throw new Error("field must be an object");
+  const f = raw as Record<string, unknown>;
+  if (typeof f.key !== "string" || !/^[a-z][a-z0-9_]*$/.test(f.key)) throw new Error(`field.key must be a snake_case string`);
+  if (typeof f.kind !== "string" || !(FIELD_KINDS as string[]).includes(f.kind)) throw new Error(`field "${f.key}" has invalid kind`);
+  const kind = f.kind as ContractFieldKind;
+  if (f.multi !== undefined && typeof f.multi !== "boolean") throw new Error(`field "${f.key}" multi must be a boolean`);
+  if (f.normalize !== undefined && (typeof f.normalize !== "string" || !(NORMALIZERS as string[]).includes(f.normalize))) throw new Error(`field "${f.key}" normalize is invalid`);
+  const out: ContractField = { key: f.key as string, kind, multi: f.multi === true };
+  if (f.normalize !== undefined) out.normalize = f.normalize as ContractNormalize;
+  if (kind === "enum") {
+    if (!Array.isArray(f.values) || f.values.length === 0 || !f.values.every((v) => typeof v === "string" && v.trim() !== "")) throw new Error(`field "${f.key}" enum requires a non-empty values[] array`);
+    out.values = (f.values as string[]).map((v) => v.trim());
+  } else if (f.values !== undefined) {
+    throw new Error(`field "${f.key}" values is only allowed on enum fields`);
+  }
+  if (kind === "range") {
+    if (f.unit !== undefined) out.unit = String(f.unit);
+    if (f.currency !== undefined) out.currency = String(f.currency);
+    if (f.period !== undefined) out.period = String(f.period);
+  }
+  return out;
+}
+
+export function validateContract(raw: unknown): ExtractionContract {
+  if (typeof raw !== "object" || raw === null) throw new Error("contract must be an object");
+  const c = raw as Record<string, unknown>;
+  if (!Number.isInteger(c.schemaVersion) || (c.schemaVersion as number) < 1) throw new Error("schemaVersion must be a positive integer");
+  if (!Array.isArray(c.fields)) throw new Error("fields must be an array");
+  const fields = c.fields.map(validateField);
+  if (new Set(fields.map((f) => f.key)).size !== fields.length) throw new Error("field keys must be unique");
+  return { schemaVersion: c.schemaVersion as number, fields };
 }
 
 export function validateProvider(raw: unknown): AnalysisProviderConfig {
@@ -38,7 +74,6 @@ export function validateSettings(raw: unknown): AnalysisSettings {
   if (typeof raw !== "object" || raw === null) throw new Error("analysis settings must be an object");
   const settings = raw as Record<string, unknown>;
   if (typeof settings.systemPrompt !== "string" || settings.systemPrompt.trim() === "") throw new Error("systemPrompt is required");
-  if (!isFiniteNumber(settings.recommendedThreshold) || settings.recommendedThreshold < 0 || settings.recommendedThreshold > 10) throw new Error("recommendedThreshold must be between 0 and 10");
   if (!isFiniteNumber(settings.descriptionMaxChars) || !Number.isInteger(settings.descriptionMaxChars) || settings.descriptionMaxChars < 1 || settings.descriptionMaxChars > 100_000) throw new Error("descriptionMaxChars must be a positive integer");
   if (settings.enabledProvider !== null && settings.enabledProvider !== undefined && typeof settings.enabledProvider !== "string") throw new Error("enabledProvider must be a provider id or null");
   if (!Array.isArray(settings.providers)) throw new Error("providers must be an array");
@@ -46,7 +81,8 @@ export function validateSettings(raw: unknown): AnalysisSettings {
   if (new Set(providers.map((provider) => provider.id)).size !== providers.length) throw new Error("provider ids must be unique");
   const enabledProvider = settings.enabledProvider === undefined ? null : settings.enabledProvider as string | null;
   if (enabledProvider !== null && !providers.some((provider) => provider.id === enabledProvider)) throw new Error(`enabled provider "${enabledProvider}" does not exist`);
-  return { systemPrompt: settings.systemPrompt, recommendedThreshold: settings.recommendedThreshold, descriptionMaxChars: settings.descriptionMaxChars, enabledProvider, providers };
+  const contract = validateContract({ schemaVersion: settings.schemaVersion, fields: settings.fields });
+  return { schemaVersion: contract.schemaVersion, systemPrompt: settings.systemPrompt, descriptionMaxChars: settings.descriptionMaxChars, enabledProvider, providers, fields: contract.fields };
 }
 
 function parseDotEnv(file: string): Record<string, string> {
@@ -71,7 +107,7 @@ export function loadAnalysisSettings(packageDir: string, stateDir: string): Anal
   const statePath = join(stateDir, SETTINGS_FILE);
   if (existsSync(statePath)) return validateSettings(JSON.parse(readFileSync(statePath, "utf8")));
   const basePath = join(packageDir, "analysis.config.base.json");
-  const settings = existsSync(basePath) ? validateSettings(JSON.parse(readFileSync(basePath, "utf8"))) : validateSettings({ systemPrompt: "You are a job-matching evaluator.", recommendedThreshold: 5, descriptionMaxChars: 4000, enabledProvider: null, providers: [] });
+  const settings = existsSync(basePath) ? validateSettings(JSON.parse(readFileSync(basePath, "utf8"))) : validateSettings({ schemaVersion: 1, systemPrompt: "You are a job-description extractor.", descriptionMaxChars: 4000, enabledProvider: null, providers: [], fields: [] });
   saveAnalysisSettings(stateDir, settings);
   return settings;
 }
@@ -87,10 +123,11 @@ export function saveAnalysisSettings(stateDir: string, settings: AnalysisSetting
 
 export function toPublicSettings(settings: AnalysisSettings, stateDir = ""): AnalysisSettingsPublic {
   return {
+    schemaVersion: settings.schemaVersion,
     systemPrompt: settings.systemPrompt,
-    recommendedThreshold: settings.recommendedThreshold,
     descriptionMaxChars: settings.descriptionMaxChars,
     enabledProvider: settings.enabledProvider,
+    fields: settings.fields,
     // apiKeyEnv is the env-var *name* (not the secret value), and the numeric
     // fields are needed to pre-fill the onboarding/edit form. The key value
     // itself never leaves write-only storage.
