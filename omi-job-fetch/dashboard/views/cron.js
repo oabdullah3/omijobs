@@ -250,24 +250,20 @@ function analysisCronSection(jobs) {
   const name = el("input", { class: "input", placeholder: "name" });
   const schedule = el("input", { class: "input", placeholder: "every 6 hours" });
   const db = el("input", { class: "input", placeholder: "DB key, e.g. base" });
-  const instructions = el("textarea", { class: "input", rows: 3, placeholder: "What should the evaluator prioritize? e.g. remote internship in Hong Kong" });
   const form = el("form", { class: "form-grid" },
     el("div", { class: "form-row" },
       el("div", { class: "field" }, el("label", {}, "Name"), name),
       el("div", { class: "field" }, el("label", {}, "Schedule"), schedule)),
     el("div", { class: "field" }, el("label", {}, "DB key"), db),
-    el("div", { class: "field" }, el("label", {}, "Instructions"), instructions, el("div", { class: "hint" }, "Sent to the evaluator for every job in this run.")),
     el("button", { class: "btn btn-primary", type: "submit" }, "Add analysis cron"));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!instructions.value.trim()) { toast("Instructions are required", "warn"); return; }
-    try { await api.post("/api/cron/add-analysis", { name: name.value, schedule: schedule.value, db: db.value, instructions: instructions.value }); toast("Analysis cron added", "good"); refresh(); } catch (error) { toast(error.message, "warn"); }
+    try { await api.post("/api/cron/add-analysis", { name: name.value, schedule: schedule.value, db: db.value }); toast("Analysis cron added", "good"); refresh(); } catch (error) { toast(error.message, "warn"); }
   });
   return el("div", {},
     el("p", { class: "eyebrow" }, "Analysis crons"),
     ...jobs.map((job) => el("div", { class: "card" },
       el("div", { class: "toolbar" }, el("h3", {}, esc(job.id)), el("span", { class: "badge" }, "analysis")),
-      el("p", { class: "hint" }, `${esc(job.dbKey ?? "")} · ${esc(job.schedule)} · last: ${esc(job.lastStatus ?? "never")}`),
-      job.instructions ? el("p", { class: "hint" }, `instructions: ${esc(job.instructions)}`) : null)),
+      el("p", { class: "hint" }, `${esc(job.dbKey ?? "")} · ${esc(job.schedule)} · last: ${esc(job.lastStatus ?? "never")}`))),
     el("div", { class: "card" }, form));
 }

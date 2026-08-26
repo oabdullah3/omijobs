@@ -155,7 +155,6 @@ export function loadCron(file: string): CronFile {
       kind,
       ...(typeof job.config === "string" ? { config: job.config } : {}),
       ...(typeof job.dbKey === "string" ? { dbKey: job.dbKey } : {}),
-      ...(typeof job.instructions === "string" ? { instructions: job.instructions } : {}),
       schedule: job.schedule,
       parsed,
       enabled: job.enabled === undefined ? true : Boolean(job.enabled),
@@ -170,12 +169,11 @@ export function loadCron(file: string): CronFile {
 export function saveCron(file: string, cron: CronFile): void {
   const stored = {
     paused: cron.paused,
-    jobs: cron.jobs.map(({ id, kind, config, dbKey, instructions, schedule, enabled, lastRun, lastStatus }) => ({
+    jobs: cron.jobs.map(({ id, kind, config, dbKey, schedule, enabled, lastRun, lastStatus }) => ({
       id,
       kind,
       ...(config ? { config } : {}),
       ...(dbKey ? { dbKey } : {}),
-      ...(instructions ? { instructions } : {}),
       schedule,
       enabled,
       lastRun,
@@ -214,7 +212,7 @@ export function defaultSpawnJob(cliPath: string, stateDir: string) {
     rmSync(markerFile, { force: true });
     return new Promise((resolveOutcome) => {
       const args = analysis
-        ? [cliPath, "analyze", "run", job.dbKey ?? "", ...(job.instructions ? ["--instructions", job.instructions] : [])]
+        ? [cliPath, "analyze", "run", job.dbKey ?? ""]
         : [cliPath, "run", "--config", configPath];
       const child = spawn(process.execPath, args, {
         env: {

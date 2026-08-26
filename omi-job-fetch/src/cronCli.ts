@@ -82,9 +82,8 @@ Manage the scheduler ("gateway") and its cron jobs.
 
 ${ACCEPTED_SCHEDULES.split("\n").map((l) => (l ? `      ${l}` : "")).join("\n")}
 
-  add-analysis --name <id> --schedule "<str>" --db <key> --instructions "<text>"
-      Add an AI-analysis cron job that runs the analyzer over <key> with the
-      given instructions.
+  add-analysis --name <id> --schedule "<str>" --db <key>
+      Add an AI-analysis cron job that runs the analyzer over <key>.
 
   list                       Show jobs + last run status
   enable <id> | disable <id> Toggle one job
@@ -120,12 +119,11 @@ function parseAddArgs(argv: string[]): AddArgs {
   return args;
 }
 
-function parseAnalysisAddArgs(argv: string[]): { name: string; schedule: string; db: string; instructions: string } {
+function parseAnalysisAddArgs(argv: string[]): { name: string; schedule: string; db: string } {
   const values: Record<string, string> = {};
   for (let i = 0; i < argv.length; i++) { const key = argv[i].replace(/^--/, ""); values[key] = argv[++i] ?? ""; }
   if (!values.name || !values.schedule || !values.db) throw new Error("cron add-analysis requires --name, --schedule, and --db");
-  if (!values.instructions || !values.instructions.trim()) throw new Error('cron add-analysis requires --instructions "<text>"');
-  return { name: values.name, schedule: values.schedule, db: values.db, instructions: values.instructions };
+  return { name: values.name, schedule: values.schedule, db: values.db };
 }
 
 async function cmdAdd(argv: string[], cronFile: string): Promise<number> {
@@ -160,7 +158,7 @@ async function cmdAddAnalysis(argv: string[], cronFile: string): Promise<number>
   const valid = discoverConfigs({ packageDir, cronFile }).some((meta) => meta.id === args.db);
   if (!valid) { console.error(`Error: no DB config "${args.db}"`); return 1; }
   const cron = loadCron(cronFile); const id = uniqueId(cron, slugify(args.name));
-  cron.jobs.push({ id, kind: "analysis", dbKey: args.db, instructions: args.instructions, schedule: args.schedule, parsed: parseSchedule(args.schedule), enabled: true, lastRun: null, lastStatus: null });
+  cron.jobs.push({ id, kind: "analysis", dbKey: args.db, schedule: args.schedule, parsed: parseSchedule(args.schedule), enabled: true, lastRun: null, lastStatus: null });
   saveCron(cronFile, cron); console.log(`Added analysis cron job ${id} for ${args.db}`); return 0;
 }
 

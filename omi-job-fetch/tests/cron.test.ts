@@ -140,16 +140,17 @@ describe("cron.json load/save", () => {
     }
   });
 
-  it("round-trips an analysis job's instructions", async () => {
+  it("round-trips an analysis job's dbKey", async () => {
     const dir = await mkdtemp(join(tmpdir(), "omijobs-cron-"));
     try {
       const file = join(dir, "cron.json");
       saveCron(file, {
         paused: false,
-        jobs: [job({ kind: "analysis", dbKey: "base", instructions: "remote internship in Hong Kong", config: undefined })],
+        jobs: [job({ kind: "analysis", dbKey: "base", config: undefined })],
       });
-      expect(JSON.parse(readFileSync(file, "utf8")).jobs[0].instructions).toBe("remote internship in Hong Kong");
-      expect(loadCron(file).jobs[0].instructions).toBe("remote internship in Hong Kong");
+      expect(JSON.parse(readFileSync(file, "utf8")).jobs[0].dbKey).toBe("base");
+      expect(loadCron(file).jobs[0].dbKey).toBe("base");
+      expect("instructions" in JSON.parse(readFileSync(file, "utf8")).jobs[0]).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -250,7 +251,7 @@ describe("defaultSpawnJob", () => {
     }
   });
 
-  it("passes --instructions to the analyze spawn for analysis jobs", async () => {
+  it("spawns the analyze command for analysis jobs", async () => {
     const dir = await mkdtemp(join(tmpdir(), "omijobs-cron-"));
     try {
       const stateDir = join(dir, "state");
@@ -269,7 +270,6 @@ describe("defaultSpawnJob", () => {
             id: "analysis-job",
             kind: "analysis",
             dbKey: "base",
-            instructions: "remote internship",
             schedule: "every 6 hours",
             enabled: true,
             lastRun: null,
@@ -279,7 +279,7 @@ describe("defaultSpawnJob", () => {
           join(dir, "config.json"),
         );
         expect(outcome.ok).toBe(true);
-        expect(JSON.parse(readFileSync(stubOut, "utf8"))).toEqual(["analyze", "run", "base", "--instructions", "remote internship"]);
+        expect(JSON.parse(readFileSync(stubOut, "utf8"))).toEqual(["analyze", "run", "base"]);
       } finally {
         delete process.env.STUB_OUT;
       }

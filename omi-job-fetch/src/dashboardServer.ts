@@ -474,7 +474,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
     if (path === "/api/cron/add-analysis" && method === "POST") {
       let body: Record<string, unknown>;
       try { body = await readBody(req) as Record<string, unknown>; } catch (error) { sendJson(res, 400, { error: errMsg(error) }); return; }
-      const result = await runCronMutation({ cliPath, args: ["add-analysis", "--name", String(body.name ?? ""), "--schedule", String(body.schedule ?? ""), "--db", String(body.db ?? ""), "--instructions", String(body.instructions ?? "")] });
+      const result = await runCronMutation({ cliPath, args: ["add-analysis", "--name", String(body.name ?? ""), "--schedule", String(body.schedule ?? ""), "--db", String(body.db ?? "")] });
       dlog.info("dashboard.add", "analysis cron added", { id: String(body.name ?? "") });
       broadcast("cron", {}); sendJson(res, result.ok ? 200 : 502, { ...result }); return;
     }

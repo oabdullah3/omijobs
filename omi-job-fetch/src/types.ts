@@ -242,8 +242,6 @@ export interface CronJob {
   /** Config path passed to `--config` when the job's run is spawned. */
   config?: string;
   dbKey?: string;
-  /** Instructions passed to the analyzer for `analysis` jobs (user prompt). */
-  instructions?: string;
   /** Raw human-friendly schedule string as written in cron.json (validated on load). */
   schedule: string;
   /** Parsed schedule; persisted for display/tools, recomputed from `schedule` on load. */

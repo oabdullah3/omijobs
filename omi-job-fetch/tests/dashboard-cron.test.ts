@@ -74,18 +74,19 @@ describe("getCronState", () => {
     }
   });
 
-  it("surfaces instructions on analysis jobs", async () => {
+  it("surfaces analysis jobs without instructions", async () => {
     const { dir, cronFile, stateDir } = await makeDir();
     try {
       await writeFile(
         cronFile,
         JSON.stringify({
           paused: false,
-          jobs: [{ id: "a", kind: "analysis", dbKey: "base", instructions: "remote internship", schedule: "every 6 hours", enabled: true, lastRun: null, lastStatus: null }],
+          jobs: [{ id: "a", kind: "analysis", dbKey: "base", schedule: "every 6 hours", enabled: true, lastRun: null, lastStatus: null }],
         }),
       );
       const state = getCronState({ cronFile, stateDir, now: NOW });
-      expect(state.jobs[0]).toMatchObject({ id: "a", kind: "analysis", dbKey: "base", instructions: "remote internship" });
+      expect(state.jobs[0]).toMatchObject({ id: "a", kind: "analysis", dbKey: "base" });
+      expect("instructions" in state.jobs[0]).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
