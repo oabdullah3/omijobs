@@ -38,22 +38,23 @@ describe("extractionBlock", () => {
 });
 
 describe("runAnalysis", () => {
-  it("extracts only unapplied rows, skips analyzed/status rows by default", async () => {
+  it("extracts unapplied rows; retries failed/legacy rows; skips conforming + status rows", async () => {
     const { dir, file } = await fixture(); const lines: string[] = [];
     try {
       const summary = await runAnalysis({ ...base(file, async () => JSON.stringify({ domain: ["tech"] })), progress: { line: (l) => lines.push(l), result: (l) => lines.push(`result:${l}`) } });
-      expect(summary).toMatchObject({ outcome: "completed", analyzed: 2, skipped: 3, deleted: 1, failed: 0 });
+      // new + bad (NULL) and legacy (non-conforming) are retried; done (conforming) and applied (status) are skipped; old is deleted by retention.
+      expect(summary).toMatchObject({ outcome: "completed", analyzed: 3, skipped: 2, deleted: 1, failed: 0 });
       expect(summary).not.toHaveProperty("recommended");
-      expect(lines.at(-1)).toContain("analyzed 2");
+      expect(lines.at(-1)).toContain("analyzed 3");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
-  it("re-analyzes only non-conforming rows when the toggle is on", async () => {
+  it("reanalyze also redoes conforming rows", async () => {
     const { dir, file } = await fixture();
     try {
       let calls = 0;
       const summary = await runAnalysis({ ...base(file, async () => { calls++; return JSON.stringify({ domain: ["tech"] }); }), reanalyze: true });
-      expect(summary.analyzed).toBe(3); // new + legacy + bad (done is conforming → skipped)
-      expect(calls).toBe(3);
+      expect(summary.analyzed).toBe(4); // new + bad + legacy (always retried) + done (forced by toggle)
+      expect(calls).toBe(4);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
   it("stops between rows and aborts on auth/config errors", async () => {

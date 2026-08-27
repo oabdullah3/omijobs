@@ -79,8 +79,11 @@ export async function runAnalysis(options: AnalysisOptions): Promise<AnalysisSum
     for (const row of rows) {
       if (options.aborted?.()) { summary.outcome = "stopped"; logger?.warn("analysis.stopped", "stopped"); break; }
       if (row.status !== "unapplied") { summary.skipped++; logger?.debug("analysis.job.skipped", "row not unapplied", { signature: row.signature, status: row.status }); progress(); continue; }
-      if (row.analysis !== null) {
-        if (!options.reanalyze || conformingVersion(row.analysis, options.contract.schemaVersion)) { summary.skipped++; logger?.debug("analysis.job.skipped", "row already extracted", { signature: row.signature }); progress(); continue; }
+      // Rows with a missing or non-conforming analysis (failed extractions and
+      // legacy pre-contract rows) are retried on every run; only conforming rows
+      // are skipped unless `--reanalyze` forces a redo.
+      if (row.analysis !== null && conformingVersion(row.analysis, options.contract.schemaVersion) && !options.reanalyze) {
+        summary.skipped++; logger?.debug("analysis.job.skipped", "row already extracted", { signature: row.signature }); progress(); continue;
       }
       if (cutoff !== null && row.postedAt && !Number.isNaN(Date.parse(row.postedAt)) && Date.parse(row.postedAt) < cutoff) {
         if (deleteJobRow(options.file, row.signature)) { summary.deleted++; logger?.debug("analysis.job.deleted", "row deleted by retention", { signature: row.signature }); }
@@ -93,8 +96,9 @@ export async function runAnalysis(options: AnalysisOptions): Promise<AnalysisSum
           { role: "system", content: `${options.systemPrompt}\n\n${extractionBlock(options.contract)}` },
           { role: "user", content: userPrompt(row.job, options.descriptionMaxChars) },
         ];
-        const result = extractContract(await options.callProvider(messages), options.contract);
-        if (!result) { summary.failed++; logger?.warn("analysis.job.failed", "unparseable extraction", { signature: row.signature }); progress(); continue; }
+        const raw = await options.callProvider(messages);
+        const result = extractContract(raw, options.contract);
+        if (!result) { summary.failed++; logger?.warn("analysis.job.failed", "unparseable extraction", { signature: row.signature, content: String(raw).slice(0, 400) }); progress(); continue; }
         setJobAnalysis(options.file, row.signature, result);
         summary.analyzed++;
         const fieldCount = Object.keys(result).filter((k) => k !== "schemaVersion" && k !== "unmatched").length;
