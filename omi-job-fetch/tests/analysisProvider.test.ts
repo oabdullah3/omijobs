@@ -90,6 +90,18 @@ describe("extractContract", () => {
   it("salvages range objects from unparseable output", () => {
     expect(extractContract('garbage {"salary": {min: 38000, max: 45000}', contract)).toEqual({ schemaVersion: 1, salary: { min: 38000, max: 45000 } });
   });
+  it("stops an unterminated array at the next key instead of swallowing the rest of the document", () => {
+    // Model omitted the `]` after "Python" and continued with `"employment_type": ...`
+    // and `"salary": {...}`. Without the boundary stop this used to harvest every
+    // following key and value into skills ("employment_type", "full-time", ...).
+    const result = extractContract('{"skills": ["SQL", "Python", "employment_type": "full-time", "salary": {"min": 38000, "max": 45000}}', contract);
+    expect(result?.skills).toEqual(["sql", "python"]);
+    expect(result?.employment_type).toBe("full-time");
+    expect(result?.salary).toEqual({ min: 38000, max: 45000 });
+  });
+  it("recovers an unterminated final array at the enclosing brace", () => {
+    expect(extractContract('{"skills": ["SQL", "Python"}', contract)).toEqual({ schemaVersion: 1, skills: ["sql", "python"] });
+  });
 });
 
 describe("callProvider", () => {

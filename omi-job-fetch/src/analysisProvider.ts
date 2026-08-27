@@ -118,6 +118,12 @@ function readArrayValue(text: string, start: number): { value: unknown[]; end: n
       }
       const token = readStringToken(text, i);
       if (token) {
+        // A quoted string followed by `:` means the model omitted the array's
+        // closing bracket and the document has moved on to the next `"key":`
+        // pair — stop here instead of harvesting the rest of the document
+        // into this field.
+        const next = nextNonSpace(text, token.end);
+        if (next >= 0 && text[next] === ":") return { value: values, end: token.end };
         const value = token.value.trim();
         if (value !== "") values.push(value);
         i = token.end;
