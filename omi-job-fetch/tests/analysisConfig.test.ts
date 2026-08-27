@@ -66,6 +66,102 @@ describe("AnalysisConfig - loadAnalysisSettings", () => {
     expect(defaultSettings.providers).toBeInstanceOf(Array);
     expect(defaultSettings.schemaVersion).toBe(1);
   });
+
+  it("migrates legacy v0 settings (no schemaVersion/fields) preserving providers", () => {
+    const legacyDir = path.join(pkgDir, ".analysis-state-legacy");
+    fs.mkdirSync(legacyDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(legacyDir, "analysis.json"),
+      JSON.stringify({
+        systemPrompt: "You are a helpful assistant.",
+        recommendedThreshold: 6,
+        descriptionMaxChars: 4000,
+        enabledProvider: "openrouter",
+        providers: [
+          {
+            id: "openrouter",
+            name: "OpenRouter",
+            baseUrl: "https://openrouter.ai/api/v1",
+            model: "openrouter/auto",
+            apiKeyEnv: "OPENROUTER_API_KEY",
+            temperature: 0.2,
+            maxTokens: 400,
+            timeoutMs: 60000,
+            retries: 3,
+            retryBackoffMs: 2000,
+          },
+        ],
+      }),
+    );
+    const settings = loadAnalysisSettings(pkgDir, legacyDir);
+    expect(settings.schemaVersion).toBe(1);
+    expect(settings.enabledProvider).toBe("openrouter");
+    expect(settings.providers).toHaveLength(1);
+    expect(settings.providers[0].id).toBe("openrouter");
+    expect(settings.systemPrompt).toBe("You are a helpful assistant.");
+    expect(settings.fields.length).toBeGreaterThan(0);
+    // The migrated file is re-saved in the new shape.
+    const saved = JSON.parse(fs.readFileSync(path.join(legacyDir, "analysis.json"), "utf8"));
+    expect(saved.schemaVersion).toBe(1);
+    expect(saved.fields.length).toBeGreaterThan(0);
+    expect(saved.recommendedThreshold).toBeUndefined();
+  });
+
+  it("replaces the legacy score-based system prompt during migration", () => {
+    const legacyDir = path.join(pkgDir, ".analysis-state-legacy-prompt");
+    fs.mkdirSync(legacyDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(legacyDir, "analysis.json"),
+      JSON.stringify({
+        systemPrompt: 'You are a job-matching evaluator. The user\'s instructions describe exactly what they want in a job. Score each posting 0-10 and return {"score": 0, "reason": "..."}.',
+        descriptionMaxChars: 4000,
+        enabledProvider: "openrouter",
+        providers: [
+          {
+            id: "openrouter",
+            name: "OpenRouter",
+            baseUrl: "https://openrouter.ai/api/v1",
+            model: "openrouter/auto",
+            apiKeyEnv: "OPENROUTER_API_KEY",
+            temperature: 0.2,
+            maxTokens: 400,
+            timeoutMs: 60000,
+            retries: 3,
+            retryBackoffMs: 2000,
+          },
+        ],
+      }),
+    );
+    const settings = loadAnalysisSettings(pkgDir, legacyDir);
+    expect(settings.systemPrompt).toContain("job-description extractor");
+    expect(settings.systemPrompt).not.toContain("job-matching evaluator");
+    expect(settings.enabledProvider).toBe("openrouter");
+    expect(settings.fields.length).toBeGreaterThan(0);
+    const saved = JSON.parse(fs.readFileSync(path.join(legacyDir, "analysis.json"), "utf8"));
+    expect(saved.systemPrompt).toContain("job-description extractor");
+  });
+
+  it("repairs a v1 file that still carries the legacy score-based prompt", () => {
+    const dir = path.join(pkgDir, ".analysis-state-stale-prompt");
+    fs.mkdirSync(dir, { recursive: true });
+    const base = JSON.parse(fs.readFileSync(path.join(pkgDir, "analysis.config.base.json"), "utf8"));
+    fs.writeFileSync(
+      path.join(dir, "analysis.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        systemPrompt: "You are a job-matching evaluator. Score each posting 0-10 and return a score and reason.",
+        descriptionMaxChars: 4000,
+        enabledProvider: null,
+        providers: [],
+        fields: base.fields,
+      }),
+    );
+    const settings = loadAnalysisSettings(pkgDir, dir);
+    expect(settings.systemPrompt).toContain("job-description extractor");
+    expect(settings.systemPrompt).not.toContain("job-matching evaluator");
+    const saved = JSON.parse(fs.readFileSync(path.join(dir, "analysis.json"), "utf8"));
+    expect(saved.systemPrompt).toContain("job-description extractor");
+  });
 });
 
 describe("AnalysisConfig - saveAnalysisSettings", () => {

@@ -103,11 +103,64 @@ export function providerApiKeyStatus(provider: AnalysisProviderConfig, stateDir:
   return resolveProviderApiKey(provider, stateDir) ? "set" : "unset";
 }
 
+/** The extraction contract bundled with the package (or an empty v1 contract when absent). */
+function loadBaseContract(packageDir: string): { schemaVersion: number; fields: ContractField[] } {
+  const basePath = join(packageDir, "analysis.config.base.json");
+  if (!existsSync(basePath)) return { schemaVersion: 1, fields: [] };
+  return validateContract(JSON.parse(readFileSync(basePath, "utf8")));
+}
+
+const DEFAULT_SYSTEM_PROMPT = "You are a job-description extractor. Read the job posting and output ONLY the fields that are explicitly stated, as a single JSON object. Never invent or assume a value; when a field is not specified in the posting, omit it entirely. mandatory_languages and preferred_languages may contain ONLY human spoken languages (e.g. English, Cantonese, Mandarin, Japanese) — never programming languages, frameworks, or any other skills. Use plain text without HTML entities (write r&d, not r&amp;d). Check the spelling of technical terms and brand names (e.g., Kubernetes, Angular, JavaScript).";
+/** Signature of the pre-extraction v0 default prompt, which asked for a 0-10 score/reason verdict. */
+const LEGACY_SYSTEM_PROMPT_SIGNATURE = "job-matching evaluator";
+
+function baseSystemPrompt(packageDir: string): string {
+  const basePath = join(packageDir, "analysis.config.base.json");
+  if (existsSync(basePath)) {
+    const raw = JSON.parse(readFileSync(basePath, "utf8")) as Record<string, unknown>;
+    if (typeof raw.systemPrompt === "string" && raw.systemPrompt.trim() !== "") return raw.systemPrompt;
+  }
+  return DEFAULT_SYSTEM_PROMPT;
+}
+
+/** Keep a user-customized prompt, but never a stale v0 score-based one — the extraction pipeline ignores score/reason. */
+function resolveSystemPrompt(packageDir: string, candidate: unknown): string {
+  if (typeof candidate === "string" && candidate.trim() !== "" && !candidate.includes(LEGACY_SYSTEM_PROMPT_SIGNATURE)) return candidate;
+  return baseSystemPrompt(packageDir);
+}
+
 export function loadAnalysisSettings(packageDir: string, stateDir: string): AnalysisSettings {
   const statePath = join(stateDir, SETTINGS_FILE);
-  if (existsSync(statePath)) return validateSettings(JSON.parse(readFileSync(statePath, "utf8")));
+  if (existsSync(statePath)) {
+    const raw = JSON.parse(readFileSync(statePath, "utf8")) as Record<string, unknown>;
+    // v0 settings (pre-extraction-contract) lack schemaVersion/fields. Preserve
+    // the user's provider configuration and upgrade the shape from the bundled
+    // contract so the dashboard keeps working after an upgrade.
+    if (raw.schemaVersion === undefined || raw.fields === undefined) {
+      const contract = loadBaseContract(packageDir);
+      const settings = validateSettings({
+        schemaVersion: contract.schemaVersion,
+        systemPrompt: resolveSystemPrompt(packageDir, raw.systemPrompt),
+        descriptionMaxChars: raw.descriptionMaxChars,
+        enabledProvider: raw.enabledProvider,
+        providers: raw.providers,
+        fields: contract.fields,
+      });
+      saveAnalysisSettings(stateDir, settings);
+      return settings;
+    }
+    const settings = validateSettings(raw);
+    // A file migrated before the prompt repair still carries the v0 score-based
+    // prompt, which contradicts the extraction contract. Replace it and re-save.
+    if (settings.systemPrompt.includes(LEGACY_SYSTEM_PROMPT_SIGNATURE)) {
+      const next = { ...settings, systemPrompt: resolveSystemPrompt(packageDir, settings.systemPrompt) };
+      saveAnalysisSettings(stateDir, next);
+      return next;
+    }
+    return settings;
+  }
   const basePath = join(packageDir, "analysis.config.base.json");
-  const settings = existsSync(basePath) ? validateSettings(JSON.parse(readFileSync(basePath, "utf8"))) : validateSettings({ schemaVersion: 1, systemPrompt: "You are a job-description extractor.", descriptionMaxChars: 4000, enabledProvider: null, providers: [], fields: [] });
+  const settings = existsSync(basePath) ? validateSettings(JSON.parse(readFileSync(basePath, "utf8"))) : validateSettings({ schemaVersion: 1, systemPrompt: DEFAULT_SYSTEM_PROMPT, descriptionMaxChars: 4000, enabledProvider: null, providers: [], fields: [] });
   saveAnalysisSettings(stateDir, settings);
   return settings;
 }

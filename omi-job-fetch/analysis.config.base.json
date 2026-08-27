@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "systemPrompt": "You are a job-description extractor. Read the job posting and output ONLY the fields that are explicitly stated, as a single JSON object. Never invent or assume a value; when a field is not specified in the posting, omit it entirely.",
+  "systemPrompt": "You are a job-description extractor. Read the job posting and output ONLY the fields that are explicitly stated, as a single JSON object. Never invent or assume a value; when a field is not specified in the posting, omit it entirely. mandatory_languages and preferred_languages may contain ONLY human spoken languages (e.g. English, Cantonese, Mandarin, Japanese) — never programming languages, frameworks, or any other skills. Use plain text without HTML entities (write r&d, not r&amp;d). Check the spelling of technical terms and brand names (e.g., Kubernetes, Angular, JavaScript).",
   "descriptionMaxChars": 4000,
   "enabledProvider": null,
   "providers": [
@@ -24,11 +24,11 @@
     { "key": "preferred_languages", "kind": "list", "multi": true, "normalize": "canonical-language" },
     { "key": "skills", "kind": "list", "multi": true, "normalize": "lower" },
     { "key": "licenses", "kind": "list", "multi": true, "normalize": "canonical-license" },
-    { "key": "education", "kind": "enum", "multi": false, "values": ["phd", "masters", "bachelors-y1", "bachelors-y2", "bachelors-y3", "bachelors-y4", "diploma", "secondary"] },
-    { "key": "employment_type", "kind": "enum", "multi": false, "values": ["full-time", "part-time", "contract", "internship", "graduate"] },
+    { "key": "education", "kind": "enum", "multi": true, "values": ["phd", "masters", "bachelors", "bachelors-y1", "bachelors-y2", "bachelors-y3", "bachelors-y4", "diploma", "secondary", "recent-graduate"] },
+    { "key": "employment_type", "kind": "enum", "multi": true, "values": ["full-time", "part-time", "contract", "internship", "graduate"] },
     { "key": "job_duration", "kind": "enum", "multi": false, "values": ["permanent", "fixed-term"] },
     { "key": "seniority", "kind": "enum", "multi": false, "values": ["intern", "graduate", "assistant", "officer", "associate", "manager", "senior-manager", "director", "vp", "head"] },
-    { "key": "work_arrangement", "kind": "enum", "multi": false, "values": ["onsite", "hybrid", "remote"] },
+    { "key": "work_arrangement", "kind": "enum", "multi": true, "values": ["onsite", "hybrid", "remote"] },
     { "key": "years_experience", "kind": "range", "unit": "years" },
     { "key": "contract_length_months", "kind": "number" },
     { "key": "salary", "kind": "range", "currency": "HKD", "period": "monthly" },
