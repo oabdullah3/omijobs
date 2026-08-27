@@ -26,7 +26,8 @@ export function getAnalysisDashboardState(options: DashboardAnalysisOptions): an
     const counts = exists ? countAnalysis(path) : { total: 0, analyzed: 0, pending: 0 };
     const status = readJson(state.status(key));
     const log = existsSync(state.log(key)) ? readFileSync(state.log(key), "utf8").trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? null : null;
-    return { key, label: owners.map((owner) => owner.id).join(", "), path, exists, ...counts, retentionDays, status: status?.outcome ?? null, lastRun: status?.finishedAt ?? null, summary: status ?? log, running: path === runningDb };
+    const running = path === runningDb;
+    return { key, label: owners.map((owner) => owner.id).join(", "), path, exists, ...counts, retentionDays, status: status?.outcome ?? null, lastRun: status?.finishedAt ?? null, summary: running ? log : status, running };
   });
   return { settings: toPublicSettings(settings, options.stateDir), dbs, runningDb };
 }

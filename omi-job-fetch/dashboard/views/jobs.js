@@ -10,6 +10,7 @@ const state = {
   sort: "posted_at",
   dir: "desc",
   facets: {},        // fieldKey -> string[] selected values
+  exact: {},         // fieldKey -> boolean (exact-set match for list fields)
   min: {},           // fieldKey -> number|string (range/number/date min)
   max: {},           // fieldKey -> number|string (range/number/date max)
   contract: [],      // fields[] from the API
@@ -33,6 +34,11 @@ async function refresh() {
       : null;
     if (state.list?.fields) state.contract = state.list.fields;
     loadFacets();
+    const facetsNode = document.getElementById("jobs-facets");
+    if (facetsNode && (state.key !== facetKey || facetsNode.childElementCount === 0)) {
+      facetsNode.replaceChildren(renderFacets() ?? []);
+      facetKey = state.key;
+    }
     const err = document.getElementById("jobs-error");
     if (err) err.replaceChildren(...(state.info?.error ? [errorCallout(state.info.error)] : []));
     const body = document.getElementById("jobs-body");
@@ -204,21 +210,22 @@ function renderBody() {
   return el("div", { id: "jobs-root" },
     el("div", { id: "jobs-error" }),
     el("div", { class: "toolbar" }, source, statusFilter, search, deleteBtn),
-    el("div", { id: "jobs-facets" }, renderFacets()),
+    el("div", { id: "jobs-facets" }),
     el("div", { id: "jobs-body" }, renderTicker(), renderTable()));
 }
 
 function facetsKey() { return `omijobs-facets:${state.key}`; }
-function saveFacets() { try { localStorage.setItem(facetsKey(), JSON.stringify({ facets: state.facets, min: state.min, max: state.max })); } catch {} }
+function saveFacets() { try { localStorage.setItem(facetsKey(), JSON.stringify({ facets: state.facets, exact: state.exact, min: state.min, max: state.max })); } catch {} }
 function loadFacets() {
   const valid = new Set(state.contract.map((f) => f.key));
   try {
     const saved = JSON.parse(localStorage.getItem(facetsKey()) ?? "{}");
-    state.facets = {}; state.min = {}; state.max = {};
+    state.facets = {}; state.exact = {}; state.min = {}; state.max = {};
     for (const [k, v] of Object.entries(saved.facets ?? {})) if (valid.has(k) && Array.isArray(v)) state.facets[k] = v;
+    for (const [k, v] of Object.entries(saved.exact ?? {})) if (valid.has(k)) state.exact[k] = Boolean(v);
     for (const [k, v] of Object.entries(saved.min ?? {})) if (valid.has(k)) state.min[k] = v;
     for (const [k, v] of Object.entries(saved.max ?? {})) if (valid.has(k)) state.max[k] = v;
-  } catch { state.facets = {}; state.min = {}; state.max = {}; }
+  } catch { state.facets = {}; state.exact = {}; state.min = {}; state.max = {}; }
 }
 
 function applyFilter() {
@@ -234,13 +241,15 @@ function toggleFacet(field, value) {
   state.facets[field.key] = [...cur];
   saveFacets();
   applyFilter();
+  facetRefreshers.get(field.key)?.();
 }
 
 function renderFacets() {
+  facetRefreshers.clear();
   const rows = state.list?.rows ?? [];
   const bars = state.contract.map((field) => {
     if (field.kind === "enum") return enumFacet(field, rows);
-    if (field.kind === "list") return listFacet(field, rows);
+    if (field.kind === "list") return CHECKBOX_LIST_FIELDS.has(field.key) ? listCheckboxFacet(field, rows) : searchFacet(field, rows);
     if (field.kind === "range" || field.kind === "number") return numericFacet(field, rows);
     if (field.kind === "date") return dateFacet(field, rows);
     return null;
@@ -263,21 +272,109 @@ function enumFacet(field, rows) {
     }));
 }
 
-function listFacet(field, rows) {
+// List fields that stay checkbox-selectable instead of search-driven (low cardinality).
+const CHECKBOX_LIST_FIELDS = new Set(["mandatory_languages", "preferred_languages"]);
+const FACET_MATCH_LIMIT = 25;
+// Curated concept -> related terms. Searching a concept keyword ("tech") also
+// surfaces related values ("software engineering", "data center", "ai", …) so
+// one search can select a whole family of related domains/industries.
+const CONCEPTS = {
+  tech: ["tech", "software", "engineering", "developer", "programming", "comput", "data", "cloud", "ai", "ml", "web", "mobile", "backend", "frontend", "devops", "security", "network", "infrastructure", "blockchain", "crypto", "digital", "internet", "saas", "platform", "application", "automation", "system", "it"],
+  finance: ["finance", "financial", "fintech", "bank", "banking", "investment", "invest", "trading", "trade", "quant", "wealth", "asset", "capital", "market", "insurance", "equity", "securities", "payment", "crypto", "blockchain", "risk", "fund", "hedge"],
+  ai: ["ai", "machine learning", "ml", "llm", "nlp", "deep learning", "computer vision", "genai", "generative", "intelligence", "agent", "data science", "robotics", "automation", "neural", "model"],
+  data: ["data", "analytics", "analysis", "database", "sql", "bi", "insight", "mining", "warehouse", "etl", "pandas"],
+  crypto: ["crypto", "blockchain", "web3", "digital asset", "stablecoin", "token", "defi", "bitcoin", "ethereum", "wallet"],
+  quant: ["quant", "quantitative", "trading", "trade", "market", "derivative", "futures", "options", "portfolio", "alpha", "risk", "statistic", "mathematical", "modeling"],
+  design: ["design", "ux", "ui", "creative", "visual", "graphic", "video", "media", "art", "illustration", "photo"],
+  marketing: ["marketing", "seo", "brand", "social media", "content", "campaign", "growth", "market research"],
+};
+// Values from old runs were stored HTML-escaped ("r&amp;d") — decode for display.
+function decodeEntities(value) {
+  return String(value).replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#0*39;/g, "'").replace(/&#x27;/g, "'");
+}
+function searchTerms(query) {
+  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const terms = new Set(tokens);
+  for (const t of tokens) for (const c of CONCEPTS[t] ?? []) terms.add(c);
+  return [...terms];
+}
+function valueMatches(value, terms) {
+  const v = value.toLowerCase();
+  const tokens = v.split(/[^a-z0-9]+/).filter(Boolean);
+  return terms.some((t) => (/[^a-z0-9]/.test(t) || t.length >= 4) ? v.includes(t) : tokens.includes(t));
+}
+const facetRefreshers = new Map();
+// DB key the facets were last rendered for — re-render only when it changes
+// (or the container is empty, e.g. first mount) so facet search text isn't
+// wiped by the 5s auto-refresh.
+let facetKey = null;
+
+function searchFacet(field, rows) {
   const counts = new Map();
   for (const r of rows) {
     const v = r.analysis?.[field.key];
     const tags = Array.isArray(v) ? v : (v == null ? [] : [v]);
-    for (const t of tags) if (typeof t === "string") counts.set(t, (counts.get(t) ?? 0) + 1);
+    for (const t of tags) if (typeof t === "string" && !/^\[object /i.test(t)) counts.set(t, (counts.get(t) ?? 0) + 1);
+  }
+  const options = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const input = el("input", { class: "input facet-search", type: "search", placeholder: `search ${field.key}…` });
+  const chips = el("div", { class: "facet-chips" });
+  const suggest = el("div", { class: "facet-suggest" });
+
+  function renderChips() {
+    chips.replaceChildren(...selectedFor(field).map((v) =>
+      el("span", { class: "chip facet-chip" }, decodeEntities(v),
+        el("button", { class: "chip-x", title: `remove ${decodeEntities(v)}`, onclick: () => toggleFacet(field, v) }, "×"))));
+  }
+  function renderSuggestions() {
+    suggest.replaceChildren();
+    const q = input.value.trim();
+    if (!q) return;
+    const terms = searchTerms(q);
+    const matchedAll = options.filter(([v]) => valueMatches(decodeEntities(v), terms));
+    if (matchedAll.length === 0) { suggest.append(el("div", { class: "facet-empty" }, "no matches")); return; }
+    const already = new Set(selectedFor(field));
+    const missing = matchedAll.filter(([v]) => !already.has(v));
+    if (missing.length > 0) {
+      suggest.append(el("button", { class: "facet-select-all", onclick: () => { for (const [v] of missing) toggleFacet(field, v); input.value = ""; renderChips(); renderSuggestions(); } },
+        `Select all ${missing.length} matches`));
+    }
+    for (const [v, count] of matchedAll.slice(0, FACET_MATCH_LIMIT)) {
+      suggest.append(el("button", { class: `facet-suggest-row${already.has(v) ? " on" : ""}`, onclick: () => { toggleFacet(field, v); renderChips(); renderSuggestions(); } },
+        el("span", {}, decodeEntities(v)), el("span", { class: "count" }, `(${count})`)));
+    }
+  }
+  input.addEventListener("input", renderSuggestions);
+  renderChips();
+  facetRefreshers.set(field.key, () => { renderChips(); renderSuggestions(); });
+  return el("div", { class: "facet" },
+    el("div", { class: "eyebrow" }, field.key),
+    input, exactToggle(field), chips, suggest);
+}
+
+// Per-facet toggle: when on, the job's values must equal the selection exactly.
+function exactToggle(field) {
+  return el("label", { class: "facet-exact" },
+    el("input", { type: "checkbox", checked: Boolean(state.exact[field.key]), onchange: (e) => { state.exact[field.key] = e.target.checked; saveFacets(); applyFilter(); } }),
+    " exact only");
+}
+
+function listCheckboxFacet(field, rows) {
+  const counts = new Map();
+  for (const r of rows) {
+    const v = r.analysis?.[field.key];
+    const tags = Array.isArray(v) ? v : (v == null ? [] : [v]);
+    for (const t of tags) if (typeof t === "string" && !/^\[object /i.test(t)) counts.set(t, (counts.get(t) ?? 0) + 1);
   }
   const options = [...counts.entries()].sort((a, b) => b[1] - a[1]);
   return el("div", { class: "facet" },
     el("div", { class: "eyebrow" }, field.key),
+    exactToggle(field),
     ...options.map(([value, count]) => {
       const checked = selectedFor(field).includes(value);
       return el("label", { class: "facet-option" },
         el("input", { type: "checkbox", checked, onchange: () => toggleFacet(field, value) }),
-        ` ${esc(value)} (${count})`);
+        ` ${decodeEntities(value)} (${count})`);
     }));
 }
 
@@ -300,7 +397,11 @@ function matchesFacets(row) {
     if (selected && selected.length) {
       const v = a[field.key];
       const tags = Array.isArray(v) ? v : (v == null ? [] : [v]);
-      if (!selected.some((s) => tags.includes(s))) return false;
+      if (state.exact[field.key]) {
+        // Exact-set match: the job's values must equal the selection, nothing more.
+        const set = [...new Set(tags)];
+        if (set.length !== selected.length || !selected.every((s) => set.includes(s))) return false;
+      } else if (!selected.some((s) => tags.includes(s))) return false;
     }
     if (field.kind === "number") {
       const n = a[field.key];

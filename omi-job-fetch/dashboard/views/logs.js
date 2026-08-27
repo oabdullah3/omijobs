@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { el, esc, fmtTime } from "../app.js";
 
-const state = { filter: { source: "", level: "", range: "1h", q: "", runId: "" }, timer: null, listNode: null };
+const state = { filter: { source: "", level: "", range: "1h", q: "", runId: "" }, timer: null, listNode: null, hovering: false, selecting: false };
 
 const RANGES = { "5m": 5 * 60_000, "1h": 3_600_000, "24h": 86_400_000, "7d": 7 * 86_400_000 };
 
@@ -20,6 +20,9 @@ function queryString() {
 
 async function refresh() {
   if (!state.listNode) return;
+  // Don't clobber the DOM while the user is reading or copying: rebuilding
+  // rows mid-selection kills the selection and jumps the scroll position.
+  if (state.hovering || state.selecting) return;
   const atBottom = state.listNode.scrollHeight - state.listNode.scrollTop - state.listNode.clientHeight < 40;
   try {
     const { events, total } = await api.get(`/api/logs?${queryString()}`);
@@ -60,11 +63,26 @@ function filterBar() {
 }
 
 export function onLive() { /* logs page tail-refreshes on its own 3s timer */ }
-export function mount() { state.timer = setInterval(refresh, 3000); refresh(); }
-export function unmount() { clearInterval(state.timer); }
+export function mount() {
+  state.timer = setInterval(refresh, 3000);
+  state.onSelection = () => {
+    const sel = document.getSelection();
+    state.selecting = Boolean(sel && !sel.isCollapsed && state.listNode && state.listNode.contains(sel.anchorNode));
+  };
+  document.addEventListener("selectionchange", state.onSelection);
+  refresh();
+}
+export function unmount() {
+  clearInterval(state.timer);
+  document.removeEventListener("selectionchange", state.onSelection);
+  state.hovering = false;
+  state.selecting = false;
+}
 
 export async function render() {
   state.listNode = el("div", { class: "log-list" }, el("div", { class: "empty" }, "loading…"));
+  state.listNode.addEventListener("mouseenter", () => { state.hovering = true; });
+  state.listNode.addEventListener("mouseleave", () => { state.hovering = false; });
   const root = document.createElement("div");
   root.append(
     el("div", { class: "toolbar" }, el("p", { class: "eyebrow" }, "Logs"), el("span", { class: "hint", id: "logs-count" }, "")),

@@ -147,6 +147,21 @@ a { color: var(--accent); }
 .facet-option input { margin: 0; }
 .facet-range { display: flex; align-items: center; gap: 6px; }
 .facet-range .input { width: 72px; padding: 4px 6px; font-size: 12px; }
+.facet-search { width: 100%; padding: 4px 6px; font-size: 12px; margin-bottom: 6px; box-sizing: border-box; }
+.facet-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.facet-chip { display: inline-flex; align-items: center; gap: 4px; text-transform: none; letter-spacing: 0; padding: 2px 4px 2px 8px; color: var(--accent); }
+.chip-x { border: 0; background: none; color: inherit; cursor: pointer; font: 13px var(--mono); padding: 0 2px; line-height: 1; }
+.chip-x:hover { color: var(--text); }
+.facet-suggest { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; }
+.facet-suggest-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; border: 0; background: transparent; cursor: pointer; font: 12px var(--mono); color: var(--muted); padding: 3px 4px; text-align: left; border-radius: 6px; }
+.facet-suggest-row:hover { background: var(--line); color: var(--text); }
+.facet-suggest-row.on { color: var(--accent); }
+.facet-suggest-row .count { color: var(--faint); }
+.facet-select-all { border: 1px dashed var(--line); background: transparent; color: var(--accent); font: 600 11px var(--mono); padding: 4px 6px; border-radius: 6px; cursor: pointer; margin-bottom: 4px; text-align: left; }
+.facet-select-all:hover { border-color: currentColor; }
+.facet-empty { font: 12px var(--mono); color: var(--faint); padding: 4px 0; }
+.facet-exact { display: flex; align-items: center; gap: 4px; font: 11px var(--mono); color: var(--muted); margin: 0 0 6px; cursor: pointer; user-select: none; }
+.facet-exact input { margin: 0; }
 
 /* Docs typography */
 .docs h1 { font: 700 30px var(--serif); margin: 0 0 4px; }
