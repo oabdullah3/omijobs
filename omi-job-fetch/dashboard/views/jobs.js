@@ -269,11 +269,24 @@ function enumFacet(field, rows) {
       return el("label", { class: "facet-option" },
         el("input", { type: "checkbox", checked, onchange: () => toggleFacet(field, value) }),
         ` ${esc(value)} (${count})`);
-    }));
+    }),
+    unspecifiedToggle(field, rows));
 }
 
 // List fields that stay checkbox-selectable instead of search-driven (low cardinality).
 const CHECKBOX_LIST_FIELDS = new Set(["mandatory_languages", "preferred_languages"]);
+// Sentinel selected in a facet when the job's JD never mentioned the field at
+// all (e.g. no language requirement) — lets us surface those jobs for manual
+// judgment instead of silently dropping them from every filtered view.
+const UNSPECIFIED = "__unspecified__";
+function fieldMissing(v) { return v == null || v === "" || (Array.isArray(v) && v.length === 0); }
+function unspecifiedToggle(field, rows) {
+  const count = rows.filter((r) => fieldMissing(r.analysis?.[field.key])).length;
+  const checked = selectedFor(field).includes(UNSPECIFIED);
+  return el("label", { class: "facet-option unspecified" },
+    el("input", { type: "checkbox", checked, onchange: () => toggleFacet(field, UNSPECIFIED) }),
+    ` unspecified${count ? ` (${count})` : ""}`);
+}
 const FACET_MATCH_LIMIT = 25;
 // Curated concept -> related terms. Searching a concept keyword ("tech") also
 // surfaces related values ("software engineering", "data center", "ai", …) so
@@ -321,10 +334,11 @@ function searchFacet(field, rows) {
   const chips = el("div", { class: "facet-chips" });
   const suggest = el("div", { class: "facet-suggest" });
 
+  function chipLabel(v) { return v === UNSPECIFIED ? "unspecified" : decodeEntities(v); }
   function renderChips() {
     chips.replaceChildren(...selectedFor(field).map((v) =>
-      el("span", { class: "chip facet-chip" }, decodeEntities(v),
-        el("button", { class: "chip-x", title: `remove ${decodeEntities(v)}`, onclick: () => toggleFacet(field, v) }, "×"))));
+      el("span", { class: "chip facet-chip" }, chipLabel(v),
+        el("button", { class: "chip-x", title: `remove ${chipLabel(v)}`, onclick: () => toggleFacet(field, v) }, "×"))));
   }
   function renderSuggestions() {
     suggest.replaceChildren();
@@ -349,6 +363,7 @@ function searchFacet(field, rows) {
   facetRefreshers.set(field.key, () => { renderChips(); renderSuggestions(); });
   return el("div", { class: "facet" },
     el("div", { class: "eyebrow" }, field.key),
+    unspecifiedToggle(field, rows),
     input, exactToggle(field), chips, suggest);
 }
 
@@ -375,7 +390,8 @@ function listCheckboxFacet(field, rows) {
       return el("label", { class: "facet-option" },
         el("input", { type: "checkbox", checked, onchange: () => toggleFacet(field, value) }),
         ` ${decodeEntities(value)} (${count})`);
-    }));
+    }),
+    unspecifiedToggle(field, rows));
 }
 
 function numericFacet(field, rows) {
@@ -397,11 +413,15 @@ function matchesFacets(row) {
     if (selected && selected.length) {
       const v = a[field.key];
       const tags = Array.isArray(v) ? v : (v == null ? [] : [v]);
+      const wantUnspecified = selected.includes(UNSPECIFIED);
+      const real = selected.filter((s) => s !== UNSPECIFIED);
+      if (wantUnspecified && fieldMissing(v)) continue; // matches via "unspecified"
+      if (real.length === 0) return false; // only unspecified selected, but this job has a value
       if (state.exact[field.key]) {
-        // Exact-set match: the job's values must equal the selection, nothing more.
+        // Exact-set match against the real values (unspecified handled above).
         const set = [...new Set(tags)];
-        if (set.length !== selected.length || !selected.every((s) => set.includes(s))) return false;
-      } else if (!selected.some((s) => tags.includes(s))) return false;
+        if (set.length !== real.length || !real.every((s) => set.includes(s))) return false;
+      } else if (!real.some((s) => tags.includes(s))) return false;
     }
     if (field.kind === "number") {
       const n = a[field.key];

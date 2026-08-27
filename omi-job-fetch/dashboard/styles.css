@@ -145,6 +145,7 @@ a { color: var(--accent); }
 .facet .eyebrow { margin-bottom: 6px; }
 .facet-option { display: flex; align-items: center; gap: 6px; font: 12px var(--mono); color: var(--muted); padding: 2px 0; cursor: pointer; }
 .facet-option input { margin: 0; }
+.facet-option.unspecified { color: var(--faint); font-style: italic; border-top: 1px dashed var(--line); margin-top: 4px; padding-top: 5px; }
 .facet-range { display: flex; align-items: center; gap: 6px; }
 .facet-range .input { width: 72px; padding: 4px 6px; font-size: 12px; }
 .facet-search { width: 100%; padding: 4px 6px; font-size: 12px; margin-bottom: 6px; box-sizing: border-box; }
