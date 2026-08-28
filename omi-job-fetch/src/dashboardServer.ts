@@ -312,27 +312,30 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
         return;
       }
       let config: RunConfig;
+      const baseMeta = metas.find((m) => m.kind === "base");
+      const baseConfig = baseMeta ? readConfig(baseMeta.path) : undefined;
+      const friendly = {
+        queries: Array.isArray(body.queries) ? body.queries.map(String) : undefined,
+        enabledPortals: Array.isArray(body.enabledPortals) ? body.enabledPortals.map(String) : undefined,
+        storage: body.storage as "shared" | "separate" | "custom" | undefined,
+        dbEnabled: typeof body.dbEnabled === "boolean" ? body.dbEnabled : undefined,
+        retentionDays: meta.kind === "base" && typeof body.retentionDays === "number" ? body.retentionDays : undefined,
+        baseConfig,
+        id,
+      };
       if (body.raw !== undefined) {
+        // Advanced editor: the raw JSON is the source of truth. Friendly fields
+        // the client also sends (form fields the user changed) are applied on
+        // top, so a stale form value can never clobber a raw-JSON edit. Raw
+        // JSON keeps its own retentionDays even for cron configs.
         const v = validateConfig(body.raw);
         if (!v.ok) {
           sendJson(res, 400, { error: v.error });
           return;
         }
-        config = v.config;
+        config = applyFriendlyUpdate(v.config, friendly);
       } else {
-        const current = readConfig(meta.path);
-        const baseMeta = metas.find((m) => m.kind === "base");
-        const baseConfig = baseMeta ? readConfig(baseMeta.path) : undefined;
-        config = applyFriendlyUpdate(current, {
-          queries: Array.isArray(body.queries) ? body.queries.map(String) : undefined,
-          enabledPortals: Array.isArray(body.enabledPortals) ? body.enabledPortals.map(String) : undefined,
-          storage: body.storage as "shared" | "separate" | "custom" | undefined,
-          dbEnabled: typeof body.dbEnabled === "boolean" ? body.dbEnabled : undefined,
-          retentionDays: meta.kind === "base" && typeof body.retentionDays === "number" ? body.retentionDays : undefined,
-          baseConfig,
-          id,
-          stripRetention: meta.kind === "cron",
-        });
+        config = applyFriendlyUpdate(readConfig(meta.path), { ...friendly, stripRetention: meta.kind === "cron" });
       }
       writeConfig(meta.path, config);
       const fresh = configMeta(meta.id, meta.kind, meta.path, meta.rel, config);

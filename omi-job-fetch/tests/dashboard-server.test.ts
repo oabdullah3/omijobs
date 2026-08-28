@@ -143,6 +143,36 @@ describe("dashboard server", () => {
     }
   });
 
+  it("PUT /api/configs/base merges friendly fields on top of raw JSON", async () => {
+    const env = await makeEnv();
+    try {
+      const res = await fetch(env.server.url + "/api/configs/base", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          raw: {
+            global: { queries: ["intern"] },
+            portals: { enabled: ["greenhouse"], config: {} },
+            ats: { enabled: [], config: {} },
+            outputDir: "output",
+            db: { enabled: true, file: "jobs.db", retentionDays: 30 },
+          },
+          queries: ["grad", "intern"],
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      // The changed form field (queries) overrides the raw JSON…
+      expect(body.config.queries).toEqual(["grad", "intern"]);
+      // …but everything the form didn't touch comes from the raw JSON verbatim.
+      const written = await (await fetch(env.server.url + "/api/configs/base")).json();
+      expect(written.config.portals.enabled).toEqual(["greenhouse"]);
+    } finally {
+      await env.server.close();
+      await rm(env.dir, { recursive: true, force: true });
+    }
+  });
+
   it("GET /api/configs/base returns the full raw config for the advanced editor", async () => {
     const env = await makeEnv();
     try {

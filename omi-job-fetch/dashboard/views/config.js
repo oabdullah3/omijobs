@@ -85,6 +85,10 @@ function editModal(meta) {
   const retention = el("input", { class: "input", type: "number", min: 0, value: meta.retentionDays ?? 30 });
   const raw = el("textarea", { class: "input codeblock", rows: 10, spellcheck: "false" });
   raw.value = "loading…";
+  // One Save button persists the friendly form fields AND the raw JSON. It stays
+  // disabled until the full config finishes loading so a save can never hit a
+  // half-loaded editor.
+  const saveBtn = el("button", { class: "btn btn-primary", disabled: true, onclick: () => save() }, "Save");
   const modal = el("div", { class: "modal" },
     el("h3", {}, `Edit ${esc(meta.id)}`),
     el("div", { class: "callout warn", id: "db-warning", style: "display:none" },
@@ -101,66 +105,76 @@ function editModal(meta) {
       el("div", { class: "field" }, el("label", {}, "Aggregate DB"), el("label", {}, dbEnabled, " enabled (dashboard depends on it)")),
       meta.kind === "base" ? el("div", { class: "field" }, el("label", {}, "Retention (days)"), retention, el("div", { class: "hint" }, "0 keeps everything; cron configs inherit this value.")) : null,
       el("div", { class: "field" }, el("label", {}, "Advanced (raw JSON)"), raw,
-        el("div", { class: "hint" }, "The full config file — edited here and applied verbatim via Apply JSON.")),
+        el("div", { class: "hint" }, "The full config file — Save applies it along with the form fields above (form fields win where they overlap).")),
     ),
     el("div", { class: "modal-actions" },
-      el("button", { class: "btn btn-primary", onclick: () => save() }, "Save"),
-      el("button", { class: "btn", onclick: () => applyJson() }, "Apply JSON"),
+      saveBtn,
       el("button", { class: "btn btn-ghost", onclick: () => backdrop.remove() }, "Cancel")));
   const backdrop = openModal(modal);
 
   // Load the FULL raw RunConfig into the advanced editor on open.
   api.get(`/api/configs/${meta.id}`).then(({ config }) => {
     raw.value = JSON.stringify(config, null, 2);
-  }).catch(() => { raw.value = ""; });
+    saveBtn.disabled = false;
+  }).catch((error) => {
+    raw.value = "";
+    toast(`Could not load the config: ${error.message}`, "warn");
+  });
 
   function showWarning() {
     document.getElementById("db-warning").style.display = "block";
   }
 
+  // Initial form values, for dirty-tracking: Save sends the raw JSON plus only
+  // the form fields the user actually changed, so a raw-JSON edit (e.g. a
+  // portal block) is never overwritten by a stale form value.
+  const initialQueries = [...meta.queries];
+  const initialEnabled = [...meta.enabledPortals];
+  const initialStorage = meta.db.file === "jobs.db" && meta.db.enabled ? "shared"
+    : (meta.db.file.endsWith(".db") && meta.db.file !== "jobs.db" && meta.db.enabled ? "separate" : "custom");
+  const initialDbEnabled = meta.db.enabled;
+  const initialRetention = meta.retentionDays ?? 30;
+  const sameSet = (a, b) => {
+    const sa = [...a].sort();
+    const sb = [...b].sort();
+    return sa.length === sb.length && sa.every((v, i) => v === sb[i]);
+  };
+
   async function save() {
     const warning = document.getElementById("db-warning");
     warning.style.display = "none";
-    const willDisable = !dbEnabled.checked;
+    const willDisable = !dbEnabled.checked && initialDbEnabled;
     if (willDisable && !confirm("Disabling the aggregate DB means the dashboard Jobs page will not show results from this config. Continue?")) return;
-    const payload = { queries: queries.value.split(",").map((s) => s.trim()).filter(Boolean), dbEnabled: dbEnabled.checked };
-    if (meta.kind === "base") payload.retentionDays = Number(retention.value);
-    if (meta.kind === "cron") {
-      payload.storage = document.querySelector(`input[name=storage]:checked`)?.value;
+    // The raw JSON in the advanced editor is the source of truth for anything
+    // the form doesn't override — parse it first so a typo can't silently drop
+    // edits the way the old Save / Apply JSON split did.
+    let parsed;
+    try {
+      parsed = JSON.parse(raw.value);
+    } catch {
+      toast("Invalid JSON in the advanced editor — nothing was saved", "warn");
+      return;
     }
-    payload.enabledPortals = [...adapterChecks].filter((c) => c.firstChild.checked).map((c) => c.firstChild.value);
+    const payload = { raw: parsed };
+    const queriesVal = queries.value.split(",").map((s) => s.trim()).filter(Boolean);
+    if (!sameSet(queriesVal, initialQueries)) payload.queries = queriesVal;
+    const enabledVal = [...adapterChecks].filter((c) => c.firstChild.checked).map((c) => c.firstChild.value);
+    if (!sameSet(enabledVal, initialEnabled)) payload.enabledPortals = enabledVal;
+    if (dbEnabled.checked !== initialDbEnabled) payload.dbEnabled = dbEnabled.checked;
+    if (meta.kind === "base") {
+      const retentionVal = Number(retention.value);
+      if (retentionVal !== initialRetention) payload.retentionDays = retentionVal;
+    } else {
+      const storageVal = document.querySelector(`input[name=storage]:checked`)?.value;
+      if (storageVal !== initialStorage) payload.storage = storageVal;
+    }
     try {
       const body = await api.put(`/api/configs/${meta.id}`, payload);
       if (body.dbWarning) showWarning();
       toast(`Saved ${esc(meta.id)}`, "good");
       // When the DB is disabled, keep the modal open so the #db-warning callout
       // stays visible — the user dismisses it via the modal's close button.
-      if (!body.dbWarning) {
-        backdrop.remove();
-      }
-      refresh();
-    } catch (error) {
-      toast(error.message, "warn");
-    }
-  }
-
-  async function applyJson() {
-    let parsed;
-    try {
-      parsed = JSON.parse(raw.value);
-    } catch {
-      toast("Invalid JSON — nothing was applied", "warn");
-      return;
-    }
-    try {
-      const body = await api.put(`/api/configs/${meta.id}`, { raw: parsed });
-      if (body.dbWarning) showWarning();
-      toast(`Applied JSON to ${esc(meta.id)}`, "good");
-      // When the DB is disabled, keep the modal open so the #db-warning callout
-      // stays visible — the user dismisses it via the modal's close button.
-      if (!body.dbWarning) {
-        backdrop.remove();
-      }
+      if (!body.dbWarning) backdrop.remove();
       refresh();
     } catch (error) {
       toast(error.message, "warn");
