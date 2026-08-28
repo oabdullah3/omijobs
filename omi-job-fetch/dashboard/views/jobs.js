@@ -25,10 +25,18 @@ async function refreshSources() {
   if (!state.key && state.sources.length) state.key = state.sources[0].key;
   if (state.key && !state.sources.some((s) => s.key === state.key)) state.key = state.sources[0]?.key ?? null;
 }
+// The toolbar (with the Delete DB button) is built once per view mount by
+// renderBody(); refresh() only re-renders the job list. Sync the button's
+// enabled state here so it follows the DB file's existence without a remount.
+function syncToolbar() {
+  const del = document.getElementById("delete-db-btn");
+  if (del) del.disabled = !state.info?.exists;
+}
 async function refresh() {
   try {
     await refreshSources();
     state.info = state.sources.find((s) => s.key === state.key) ?? null;
+    syncToolbar();
     state.list = state.key
       ? await api.get(`/api/dbs/${state.key}/jobs?status=${state.status}&q=${encodeURIComponent(state.q)}&sort=${state.sort}&dir=${state.dir}&limit=500`)
       : null;
@@ -190,7 +198,7 @@ function renderBody() {
       class: "select",
       onchange: (e) => { state.key = e.target.value; state.info = state.sources.find((s) => s.key === state.key); refresh(); },
     }, srcOpts));
-  const deleteBtn = el("button", { class: "btn small btn-danger", disabled: !state.info?.exists, onclick: deleteSourceModal }, "Delete DB");
+  const deleteBtn = el("button", { id: "delete-db-btn", class: "btn small btn-danger", disabled: !state.info?.exists, onclick: deleteSourceModal }, "Delete DB");
   const statusFilter = el("select", {
     class: "select",
     onchange: (e) => { state.status = e.target.value; refresh(); },
