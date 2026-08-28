@@ -1,7 +1,10 @@
 import { api, ApiError } from "../api.js";
-import { el, esc, toast, openModal, fmtTime, fmtRel } from "../app.js";
+import { el, esc, toast, openModal, fmtTime, fmtRel, selectMenu } from "../app.js";
 
 const STATUSES = ["unapplied", "applied", "uninterested"];
+const STATUS_LABELS = { unapplied: "Not applied", applied: "Applied", uninterested: "Not interested" };
+// Extracted fields surfaced inline as chips, in visual priority order.
+const CHIP_FIELDS = ["domain", "industry", "employment_type", "salary", "seniority", "mandatory_languages", "preferred_languages", "job_duration", "work_arrangement", "licenses"];
 const state = {
   sources: [],
   key: null,
@@ -18,7 +21,11 @@ const state = {
   info: null,
   timer: null,
   searchTimer: null,
+  view: localStorage.getItem("omijobs-view") || "table", // "table" | "cards"
 };
+const expandedCards = new Set(); // card-view signatures with the chip list expanded
+const openDescs = new Set();      // card-view signatures with the description expanded (survives refreshes)
+let refreshSeq = 0;               // monotonically increasing — superseded refreshes drop their result
 
 async function refreshSources() {
   state.sources = await api.get("/api/dbs");
@@ -32,25 +39,47 @@ function syncToolbar() {
   const del = document.getElementById("delete-db-btn");
   if (del) del.disabled = !state.info?.exists;
 }
-async function refresh() {
+// Cheap fingerprint of the fetched list so the 5s poll / live events skip
+// re-rendering when nothing changed — keeps open dropdowns, expanded
+// descriptions, and scroll position intact.
+function listFingerprint(list) {
+  const rows = list?.rows ?? [];
+  let fp = `${list?.total ?? 0}:${rows.length}`;
+  for (const r of rows) {
+    fp += `\n${r.signature}|${r.status}|${r.postedAt}|${r.job?.description?.length ?? 0}|${r.job?.title ?? ""}|${r.job?.company ?? ""}|${r.job?.location ?? ""}|${r.job?.apply_url ?? ""}|${r.analysis ? JSON.stringify(r.analysis) : ""}`;
+  }
+  return fp;
+}
+
+async function refresh({ force = false } = {}) {
+  const seq = ++refreshSeq;
   try {
     await refreshSources();
     state.info = state.sources.find((s) => s.key === state.key) ?? null;
     syncToolbar();
-    state.list = state.key
+    const next = state.key
       ? await api.get(`/api/dbs/${state.key}/jobs?status=${state.status}&q=${encodeURIComponent(state.q)}&sort=${state.sort}&dir=${state.dir}&limit=500`)
       : null;
-    if (state.list?.fields) state.contract = state.list.fields;
+    if (seq !== refreshSeq) return; // superseded by a newer refresh — drop stale data
+    if (next?.fields) state.contract = next.fields;
     loadFacets();
+    const keyChanged = state.key !== facetKey;
+    if (keyChanged) { expandedCards.clear(); openDescs.clear(); }
+    loadCollapsed();
+    loadFiltersOpen();
+    const changed = force || !state.list || listFingerprint(state.list) !== listFingerprint(next);
+    state.list = next;
     const facetsNode = document.getElementById("jobs-facets");
-    if (facetsNode && (state.key !== facetKey || facetsNode.childElementCount === 0)) {
+    if (facetsNode && (keyChanged || facetsNode.childElementCount === 0)) {
       facetsNode.replaceChildren(renderFacets() ?? []);
       facetKey = state.key;
     }
     const err = document.getElementById("jobs-error");
     if (err) err.replaceChildren(...(state.info?.error ? [errorCallout(state.info.error)] : []));
-    const body = document.getElementById("jobs-body");
-    if (body) body.replaceChildren(renderTicker(), renderTable());
+    if (changed) {
+      const body = document.getElementById("jobs-body");
+      if (body) body.replaceChildren(renderTicker(), renderBodyList());
+    }
   } catch (error) {
     toast(error.message, "warn");
   }
@@ -65,11 +94,12 @@ export function onLive(event) {
   if (event === "db" || event === "runs") refresh();
 }
 export function mount() {
-  state.timer = setInterval(refresh, 5000);
+  state.timer = setInterval(() => refresh(), 5000);
   refresh();
 }
 export function unmount() {
   clearInterval(state.timer);
+  clearTimeout(state.searchTimer);
 }
 
 function chip(status) {
@@ -81,12 +111,11 @@ async function openDetail(sig) {
   const job = detail.job ?? {};
   const rows = [];
   const push = (label, value) => { if (value != null && value !== "") rows.push(el("dt", {}, label), el("dd", {}, value)); };
-  push("Title", job.title);
   push("Company", job.company);
   push("Location", job.location);
   push("Posted", fmtTime(detail.postedAt));
   push("Source", job.source);
-  push("Apply URL", job.apply_url ? el("a", { href: job.apply_url, target: "_blank", rel: "noopener" }, job.apply_url) : null);
+  if (job.apply_url) push("Apply URL", el("a", { href: job.apply_url, target: "_blank", rel: "noopener" }, job.apply_url));
   if (detail.analysis && detail.analysis.schemaVersion) {
     const chips = [];
     for (const [k, v] of Object.entries(detail.analysis)) {
@@ -96,27 +125,34 @@ async function openDetail(sig) {
     }
     rows.push(el("dt", {}, "Extraction"), el("dd", {}, ...chips));
   }
-  if (job.description) rows.push(el("dt", {}, "Description"), el("dd", {}, job.description));
+  const actions = [];
+  if (job.apply_url) actions.push(el("a", { class: "btn btn-primary", href: job.apply_url, target: "_blank", rel: "noopener" }, "Open application ↗"));
+  actions.push(
+    el("button", { class: "btn", onclick: () => setStatusAndClose(sig, "applied") }, "Mark applied"),
+    el("button", { class: "btn btn-ghost", onclick: () => setStatusAndClose(sig, "uninterested") }, "Not interested"),
+    el("button", { class: "btn btn-ghost", onclick: () => close(modal) }, "Close"));
   const modal = el("div", { class: "modal" },
-    el("h3", {}, esc(job.title || sig)),
-    el("p", { class: "hint" }, esc(job.company || "") + (job.location ? ` · ${esc(job.location)}` : "")),
+    el("div", { class: "modal-hero" },
+      el("h3", {}, esc(job.title || sig)),
+      el("p", { class: "hint" }, [job.company, job.location, fmtTime(detail.postedAt)].filter(Boolean).join(" · "))),
     el("dl", { class: "dl" }, ...rows),
-    el("div", { class: "modal-actions" },
-      el("button", { class: "btn btn-primary", onclick: () => setStatus(sig, "applied", modal) }, "Apply"),
-      el("button", { class: "btn btn-ghost", onclick: () => setStatus(sig, "uninterested", modal) }, "Not interested"),
-      el("button", { class: "btn btn-ghost", onclick: () => close(modal) }, "Close"),
-    ),
-  );
+    job.description ? el("div", { class: "modal-section" },
+      el("div", { class: "modal-label" }, "Description"),
+      el("div", { class: "modal-desc" }, job.description)) : null,
+    el("div", { class: "modal-actions" }, ...actions));
   openModal(modal);
   function close(node) { node.closest(".modal-backdrop")?.remove(); }
+  async function setStatusAndClose(sig, status) {
+    await setStatus(sig, status);
+    close(modal);
+  }
 }
 
-async function setStatus(sig, status, modal) {
+async function setStatus(sig, status) {
   try {
     await api.patch("/api/jobs", { dbKey: state.key, signature: sig, status });
-    modal.closest(".modal-backdrop")?.remove();
-    toast(`Marked ${esc(status)}`, "good");
-    refresh();
+    toast(`Marked ${STATUS_LABELS[status] ?? status}`, "good");
+    refresh({ force: true });
   } catch (error) {
     toast(error.message, "warn");
   }
@@ -126,13 +162,21 @@ function renderTicker() {
   const info = state.info;
   const by = info?.byStatus ?? {};
   const cards = [
-    ["total", info?.total ?? 0],
-    ["unapplied", by.unapplied ?? 0],
-    ["applied", by.applied ?? 0],
-    ["uninterested", by.uninterested ?? 0],
+    ["total", info?.total ?? 0, "", "All jobs"],
+    ["unapplied", by.unapplied ?? 0, "unapplied", "Jobs you haven't acted on yet"],
+    ["applied", by.applied ?? 0, "applied", "Jobs you marked applied"],
+    ["uninterested", by.uninterested ?? 0, "uninterested", "Jobs you marked not interested"],
   ];
-  return el("div", { class: "ticker" }, ...cards.map(([label, n]) =>
-    el("div", { class: "stat" }, el("b", {}, String(n)), el("span", {}, label))));
+  return el("div", { class: "ticker" }, ...cards.map(([label, n, filter, title]) =>
+    el("div", { class: `stat clickable ${filter}`, "data": { filter }, title, onclick: () => setStatusFilter(filter) },
+      el("b", {}, String(n)), el("span", {}, label))));
+}
+
+function setStatusFilter(filter) {
+  state.status = filter;
+  const sel = document.getElementById("jobs-status-filter");
+  if (sel) sel.setValue?.(filter);
+  refresh(); // status is applied server-side by the jobs endpoint
 }
 
 function renderTable() {
@@ -143,20 +187,120 @@ function renderTable() {
   if (rows.length === 0) return el("div", { class: "empty" }, "No jobs match the current facet filters.");
   const head = el("tr", {},
     ...(["posted_at", "title", "company", "location", "status"].map((key) =>
-      el("th", { onclick: () => { if (state.sort === key) state.dir = state.dir === "desc" ? "asc" : "desc"; else { state.sort = key; state.dir = "desc"; } refresh(); } },
+      el("th", { onclick: () => { if (state.sort === key) state.dir = state.dir === "desc" ? "asc" : "desc"; else { state.sort = key; state.dir = "desc"; } refresh({ force: true }); } },
         `${key}${state.sort === key ? (state.dir === "desc" ? " ↓" : " ↑") : ""}`))),
   );
-  const body = rows.map((row) =>
-    el("tr", { class: "row-click", onclick: () => openDetail(row.signature) },
-      el("td", { class: "t-time" }, fmtRel(row.postedAt)),
-      el("td", {}, el("span", { class: "t-title" }, esc(row.job.title || row.signature.slice(0, 8)))),
-      el("td", {}, esc(row.job.company ?? "")),
-      el("td", {}, esc(row.job.location ?? "")),
-      el("td", {}, chip(row.status))));
+  const body = rows.map((row) => el("tr", { class: "row-click", onclick: () => openDetail(row.signature) },
+    el("td", { class: "t-time" }, fmtRel(row.postedAt)),
+    el("td", {},
+      el("span", { class: "t-title" }, esc(row.job.title || row.signature.slice(0, 8)))),
+    el("td", {}, esc(row.job.company ?? "")),
+    el("td", {}, esc(row.job.location ?? "")),
+    el("td", {}, statusSelect(row.signature, row.status))));
   return el("div", { class: "table-wrap" },
     el("table", { class: "table" },
       el("thead", {}, head),
       el("tbody", {}, ...body)));
+}
+
+function statusSelect(sig, status) {
+  const dd = selectMenu({
+    class: `status-select ${esc(status)}`,
+    title: "Set job status",
+    value: status,
+    options: STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
+    onSelect: async (next) => {
+      dd.btn.disabled = true;
+      try {
+        await api.patch("/api/jobs", { dbKey: state.key, signature: sig, status: next });
+        toast(`Marked ${STATUS_LABELS[next] ?? next}`, "good");
+        refresh({ force: true });
+      } catch (error) {
+        toast(error.message, "warn");
+        refresh({ force: true });
+      }
+    },
+  });
+  return dd;
+}
+
+function formatChip(v) {
+  if (Array.isArray(v)) return v.join(", ");
+  if (v && typeof v === "object") {
+    if (v.min != null || v.max != null) {
+      const lo = v.min != null ? fmtNum(v.min) : "?";
+      const hi = v.max != null ? fmtNum(v.max) : "?";
+      return `${lo}–${hi}`;
+    }
+    return JSON.stringify(v);
+  }
+  return String(v);
+}
+function fmtNum(n) { return typeof n === "number" && n >= 1000 ? `${Math.round(n / 1000)}k` : String(n); }
+function trunc(text, n) {
+  const s = String(text);
+  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
+}
+// Extracted fields present on this row, sorted by visual priority.
+function cardChips(row) {
+  const a = row.analysis ?? {};
+  const fields = state.contract.map((f) => f.key);
+  const rank = (k) => { const i = CHIP_FIELDS.indexOf(k); return i === -1 ? CHIP_FIELDS.length : i; };
+  const chips = [];
+  for (const key of fields) {
+    const v = a[key];
+    if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) continue;
+    chips.push([key, formatChip(v)]);
+  }
+  chips.sort((x, y) => rank(x[0]) - rank(y[0]));
+  return chips;
+}
+const CARD_CHIP_LIMIT = 4;
+
+function renderCards() {
+  const list = state.list;
+  if (!list) return el("div", { class: "empty" }, "No source selected.");
+  const rows = (list.rows ?? []).filter(matchesFacets);
+  if (list.total === 0) return el("div", { class: "empty" }, "No jobs match the current filter.");
+  if (rows.length === 0) return el("div", { class: "empty" }, "No jobs match the current facet filters.");
+  return el("div", { class: "job-cards" }, ...rows.map(jobCard));
+}
+
+function jobCard(row) {
+  const job = row.job ?? {};
+  const all = cardChips(row);
+  const expanded = expandedCards.has(row.signature);
+  const descOpen = openDescs.has(row.signature);
+  const chips = (expanded ? all : all.slice(0, CARD_CHIP_LIMIT)).map(([k, v]) => el("span", { class: "mini-chip" }, `${esc(k)}: ${esc(trunc(v, 40))}`));
+  if (all.length > CARD_CHIP_LIMIT) {
+    chips.push(el("button", { class: "chip more", onclick: (e) => {
+      e.stopPropagation();
+      expanded ? expandedCards.delete(row.signature) : expandedCards.add(row.signature);
+      applyFilter();
+    } }, expanded ? "less" : `+${all.length - CARD_CHIP_LIMIT} more`));
+  }
+  const actions = [];
+  if (job.apply_url) actions.push(el("a", { class: "btn btn-primary", href: job.apply_url, target: "_blank", rel: "noopener" }, "Apply ↗"));
+  actions.push(el("button", { class: "btn", onclick: () => openDetail(row.signature) }, "Details"));
+  if (row.status !== "uninterested") actions.push(el("button", { class: "btn btn-ghost", onclick: () => setStatus(row.signature, "uninterested") }, "Not interested"));
+  return el("div", { class: "job-card" },
+    el("div", { class: "job-card-head" },
+      el("h3", { class: "job-card-title", title: "Open details", onclick: () => openDetail(row.signature) }, esc(job.title || row.signature.slice(0, 8))),
+      statusSelect(row.signature, row.status)),
+    el("div", { class: "job-card-meta" },
+      el("span", { class: "job-card-company" }, esc(job.company ?? "—")),
+      job.location ? el("span", {}, `· ${esc(job.location)}`) : null,
+      el("span", { class: "t-time" }, `· ${fmtRel(row.postedAt)}`)),
+    chips.length ? el("div", { class: "job-card-chips" }, ...chips) : null,
+    job.description ? el("div", { class: "card-desc-wrap" },
+      el("p", { class: `card-desc${descOpen ? " open" : ""}` }, esc(job.description)),
+      el("button", { class: "desc-toggle", onclick: (e) => {
+        const p = e.currentTarget.previousElementSibling;
+        const open = p.classList.toggle("open");
+        open ? openDescs.add(row.signature) : openDescs.delete(row.signature);
+        e.currentTarget.textContent = open ? "Read less" : "Read more";
+      } }, descOpen ? "Read less" : "Read more")) : null,
+    el("div", { class: "job-card-actions" }, ...actions));
 }
 
 function deleteSourceModal() {
@@ -172,7 +316,7 @@ function deleteSourceModal() {
       backdrop.remove();
       toast(`Deleted ${esc(key)}`, "good");
       if (state.key === key) state.key = null;
-      refresh();
+      refresh({ force: true });
     } catch (error) {
       toast(error.message, "warn");
     }
@@ -188,38 +332,38 @@ function deleteSourceModal() {
 }
 
 function renderBody() {
-  const srcOpts = state.sources.map((s) => {
-    const name = s.key === "base" ? "default (jobs.db)" : s.key;
-    return el("option", { value: s.key }, `${name}`);
-  });
-  const source = el("div", {},
-    el("label", { class: "eyebrow" }, "Source"),
-    el("select", {
-      class: "select",
-      onchange: (e) => { state.key = e.target.value; state.info = state.sources.find((s) => s.key === state.key); refresh(); },
-    }, srcOpts));
+  const srcOpts = state.sources.map((s) => ({ value: s.key, label: s.key === "base" ? "default (jobs.db)" : s.key }));
+  const source = el("label", { class: "compound", title: "Which database to browse" },
+    el("span", { class: "compound-label" }, "source"),
+    selectMenu({
+      value: state.key,
+      options: srcOpts,
+      onSelect: (v) => { state.key = v; state.info = state.sources.find((s) => s.key === state.key); refresh({ force: true }); },
+    }));
   const deleteBtn = el("button", { id: "delete-db-btn", class: "btn small btn-danger", disabled: !state.info?.exists, onclick: deleteSourceModal }, "Delete DB");
-  const statusFilter = el("select", {
-    class: "select",
-    onchange: (e) => { state.status = e.target.value; refresh(); },
-  },
-    el("option", { value: "" }, "any status"),
-    ...STATUSES.map((s) => el("option", { value: s }, s)));
+  const statusFilter = el("label", { class: "compound", title: "Filter by status" },
+    el("span", { class: "compound-label" }, "status"),
+    selectMenu({
+      id: "jobs-status-filter",
+      value: state.status,
+      options: [{ value: "", label: "any status" }, ...STATUSES.map((s) => ({ value: s, label: s }))],
+      onSelect: (v) => { state.status = v; refresh({ force: true }); },
+    }));
   const search = el("input", {
-    class: "input",
+    class: "input toolbar-search",
     placeholder: "search title / company / location…",
     value: state.q,
     oninput: (e) => {
       state.q = e.target.value.trim();
       clearTimeout(state.searchTimer);
-      state.searchTimer = setTimeout(refresh, 300);
+      state.searchTimer = setTimeout(() => refresh({ force: true }), 300);
     },
   });
   return el("div", { id: "jobs-root" },
     el("div", { id: "jobs-error" }),
-    el("div", { class: "toolbar" }, source, statusFilter, search, deleteBtn),
+    el("div", { class: "toolbar" }, source, statusFilter, search, el("div", { class: "spacer" }), viewToggle(), deleteBtn),
     el("div", { id: "jobs-facets" }),
-    el("div", { id: "jobs-body" }, renderTicker(), renderTable()));
+    el("div", { id: "jobs-body" }, renderTicker(), renderBodyList()));
 }
 
 function facetsKey() { return `omijobs-facets:${state.key}`; }
@@ -238,7 +382,26 @@ function loadFacets() {
 
 function applyFilter() {
   const body = document.getElementById("jobs-body");
-  if (body) body.replaceChildren(renderTicker(), renderTable());
+  if (body) body.replaceChildren(renderTicker(), renderBodyList());
+  updateFiltersBar();
+}
+
+function renderBodyList() {
+  return state.view === "cards" ? renderCards() : renderTable();
+}
+
+function viewToggle() {
+  return el("div", { class: "seg", title: "Switch between compact rows and full cards" },
+    el("button", { class: `seg-btn${state.view === "table" ? " on" : ""}`, "data": { view: "table" }, onclick: () => setView("table") }, "Table"),
+    el("button", { class: `seg-btn${state.view === "cards" ? " on" : ""}`, "data": { view: "cards" }, onclick: () => setView("cards") }, "Cards"));
+}
+
+function setView(view) {
+  state.view = view;
+  localStorage.setItem("omijobs-view", view);
+  applyFilter();
+  // applyFilter() re-renders only the list; keep the toggle's active state in sync.
+  document.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("on", b.dataset.view === view));
 }
 
 function selectedFor(field) { return state.facets[field.key] ?? []; }
@@ -262,23 +425,96 @@ function renderFacets() {
     if (field.kind === "date") return dateFacet(field, rows);
     return null;
   }).filter(Boolean);
-  return bars.length ? el("div", { class: "facets" }, ...bars) : null;
+  if (!bars.length) return null;
+  return el("div", {},
+    filtersBar(),
+    el("div", { class: `facets${filtersOpen ? "" : " closed"}`, id: "jobs-facets-grid" }, ...bars));
+}
+
+function filtersBar() {
+  filtersBarNode = el("div", { class: "filters-bar" });
+  updateFiltersBar();
+  return filtersBarNode;
+}
+function updateFiltersBar() {
+  if (!filtersBarNode) return;
+  const active = activeFilterCount();
+  const parts = [
+    el("button", { class: "filters-toggle", title: "Show / hide filters", onclick: toggleFiltersPanel },
+      el("span", { class: "chev" }, filtersOpen ? "▾" : "▸"),
+      " Filters"),
+  ];
+  if (active > 0) {
+    parts.push(
+      el("span", { class: "filters-count" }, `${active} active filter${active === 1 ? "" : "s"}`),
+      el("span", { class: "filters-spacer" }),
+      el("button", { class: "btn small", onclick: clearAllFilters }, "Clear all"));
+  }
+  filtersBarNode.replaceChildren(...parts);
+}
+function toggleFiltersPanel() {
+  filtersOpen = !filtersOpen;
+  try { localStorage.setItem(`omijobs-filters-open:${state.key}`, filtersOpen ? "1" : "0"); } catch {}
+  const grid = document.getElementById("jobs-facets-grid");
+  if (grid) grid.classList.toggle("closed", !filtersOpen);
+  updateFiltersBar();
+}
+
+function activeFilterCount() {
+  let n = 0;
+  for (const f of state.contract) {
+    n += (state.facets[f.key] ?? []).length;
+    if (state.min[f.key] != null) n++;
+    if (state.max[f.key] != null) n++;
+    if (state.exact[f.key]) n++;
+  }
+  return n;
+}
+
+function clearAllFilters() {
+  state.facets = {}; state.exact = {}; state.min = {}; state.max = {};
+  saveFacets();
+  applyFilter();
+  const facetsNode = document.getElementById("jobs-facets");
+  if (facetsNode) facetsNode.replaceChildren(renderFacets() ?? []);
+}
+
+function collapsedKey() { return `omijobs-collapsed:${state.key}`; }
+function saveCollapsed() { try { localStorage.setItem(collapsedKey(), JSON.stringify([...collapsedFacets])); } catch {} }
+function loadCollapsed() {
+  collapsedFacets.clear();
+  try { for (const k of JSON.parse(localStorage.getItem(collapsedKey()) ?? "[]")) collapsedFacets.add(k); } catch {}
+}
+function facetHead(field) {
+  return el("button", { class: "facet-head", title: "Collapse / expand", onclick: (e) => {
+    const facet = e.currentTarget.closest(".facet");
+    const closed = facet.classList.toggle("closed");
+    closed ? collapsedFacets.add(field.key) : collapsedFacets.delete(field.key);
+    saveCollapsed();
+  } },
+    el("span", { class: "facet-name" }, field.key),
+    el("span", { class: "chev" }, "▾"));
+}
+function facetBox(field, ...children) {
+  const wide = field.kind === "date" ? " facet-wide" : "";
+  return el("div", { class: `facet${collapsedFacets.has(field.key) ? " closed" : ""}${wide}` }, facetHead(field), ...children);
 }
 
 function enumFacet(field, rows) {
   const options = [...(field.values ?? [])];
   const hasOther = rows.some((r) => { const v = r.analysis?.[field.key]; return Array.isArray(v) ? v.includes("other") : v === "other"; });
   if (hasOther) options.push("other");
-  return el("div", { class: "facet" },
-    el("div", { class: "eyebrow" }, field.key),
-    ...options.map((value) => {
-      const checked = selectedFor(field).includes(value);
-      const count = rows.filter((r) => { const v = r.analysis?.[field.key]; return Array.isArray(v) ? v.includes(value) : v === value; }).length;
-      return el("label", { class: "facet-option" },
-        el("input", { type: "checkbox", checked, onchange: () => toggleFacet(field, value) }),
-        ` ${esc(value)} (${count})`);
-    }),
-    unspecifiedToggle(field, rows));
+  return facetBox(field,
+    el("div", { class: "facet-body" },
+      ...options.map((value) => {
+        const checked = selectedFor(field).includes(value);
+        const count = rows.filter((r) => { const v = r.analysis?.[field.key]; return Array.isArray(v) ? v.includes(value) : v === value; }).length;
+        return el("label", { class: "facet-option" },
+          el("input", { type: "checkbox", checked, onchange: () => toggleFacet(field, value) }),
+          ` ${esc(value)} (${count})`);
+      }),
+      el("div", { class: "facet-special" },
+        unspecifiedToggle(field, rows))));
 }
 
 // List fields that stay checkbox-selectable instead of search-driven (low cardinality).
@@ -329,6 +565,16 @@ const facetRefreshers = new Map();
 // (or the container is empty, e.g. first mount) so facet search text isn't
 // wiped by the 5s auto-refresh.
 let facetKey = null;
+// Facet headers the user collapsed — persisted per source so a source switch
+// (which re-renders the facet list) doesn't blow them back open.
+const collapsedFacets = new Set();
+// Whole-panel Filters toggle — persisted per source. Defaults to COLLAPSED;
+// only opens if the user explicitly opened it for that source.
+let filtersOpen = false;
+let filtersBarNode = null;
+function loadFiltersOpen() {
+  try { filtersOpen = localStorage.getItem(`omijobs-filters-open:${state.key}`) === "1"; } catch {}
+}
 
 function searchFacet(field, rows) {
   const counts = new Map();
@@ -369,10 +615,12 @@ function searchFacet(field, rows) {
   input.addEventListener("input", renderSuggestions);
   renderChips();
   facetRefreshers.set(field.key, () => { renderChips(); renderSuggestions(); });
-  return el("div", { class: "facet" },
-    el("div", { class: "eyebrow" }, field.key),
-    unspecifiedToggle(field, rows),
-    input, exactToggle(field), chips, suggest);
+  return facetBox(field,
+    el("div", { class: "facet-body" },
+      input, chips, suggest,
+      el("div", { class: "facet-special" },
+        exactToggle(field),
+        unspecifiedToggle(field, rows))));
 }
 
 // Per-facet toggle: when on, the job's values must equal the selection exactly.
@@ -390,28 +638,29 @@ function listCheckboxFacet(field, rows) {
     for (const t of tags) if (typeof t === "string" && !/^\[object /i.test(t)) counts.set(t, (counts.get(t) ?? 0) + 1);
   }
   const options = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  return el("div", { class: "facet" },
-    el("div", { class: "eyebrow" }, field.key),
-    exactToggle(field),
-    ...options.map(([value, count]) => {
-      const checked = selectedFor(field).includes(value);
-      return el("label", { class: "facet-option" },
-        el("input", { type: "checkbox", checked, onchange: () => toggleFacet(field, value) }),
-        ` ${decodeEntities(value)} (${count})`);
-    }),
-    unspecifiedToggle(field, rows));
+  return facetBox(field,
+    el("div", { class: "facet-body" },
+      ...options.map(([value, count]) => {
+        const checked = selectedFor(field).includes(value);
+        return el("label", { class: "facet-option" },
+          el("input", { type: "checkbox", checked, onchange: () => toggleFacet(field, value) }),
+          ` ${decodeEntities(value)} (${count})`);
+      }),
+      el("div", { class: "facet-special" },
+        exactToggle(field),
+        unspecifiedToggle(field, rows))));
 }
 
 function numericFacet(field, rows) {
   const min = el("input", { class: "input", type: "number", placeholder: "min", value: state.min[field.key] ?? "", oninput: (e) => { state.min[field.key] = e.target.value === "" ? undefined : Number(e.target.value); saveFacets(); applyFilter(); } });
   const max = el("input", { class: "input", type: "number", placeholder: "max", value: state.max[field.key] ?? "", oninput: (e) => { state.max[field.key] = e.target.value === "" ? undefined : Number(e.target.value); saveFacets(); applyFilter(); } });
-  return el("div", { class: "facet" }, el("div", { class: "eyebrow" }, field.key), el("div", { class: "facet-range" }, min, el("span", {}, "–"), max));
+  return facetBox(field, el("div", { class: "facet-body" }, el("div", { class: "facet-range" }, min, el("span", {}, "–"), max)));
 }
 
 function dateFacet(field, rows) {
   const before = el("input", { class: "input", type: "date", value: state.min[field.key] ?? "", oninput: (e) => { state.min[field.key] = e.target.value || undefined; saveFacets(); applyFilter(); } });
   const after = el("input", { class: "input", type: "date", value: state.max[field.key] ?? "", oninput: (e) => { state.max[field.key] = e.target.value || undefined; saveFacets(); applyFilter(); } });
-  return el("div", { class: "facet" }, el("div", { class: "eyebrow" }, field.key), el("div", { class: "facet-range" }, el("span", {}, "after"), before, el("span", {}, "before"), after));
+  return facetBox(field, el("div", { class: "facet-body" }, el("div", { class: "facet-range" }, el("span", {}, "after"), before, el("span", {}, "before"), after)));
 }
 
 function matchesFacets(row) {
