@@ -264,7 +264,7 @@ function renderActions() {
       el("button", { class: "btn btn-primary", disabled: !enabled || !dbOptions.length || running, onclick: run }, "Run extraction"),
       el("label", { class: "inline" },
         el("input", { type: "checkbox", checked: state.reanalyze, onchange: (e) => { state.reanalyze = e.target.checked; } }),
-        " Re-analyze non-conforming rows")),
+        " Re-analyze all rows (overwrites existing extraction)")),
   ];
 }
 
