@@ -261,6 +261,13 @@ a { color: var(--accent); }
 .toolbar .spacer { flex: 1; }
 .toolbar .select { width: auto; }
 .toolbar .dd { width: auto; }
+.pagination { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-top: 14px; }
+.pagination-info { font: 12px var(--mono); color: var(--muted); }
+.pagination-nav { display: inline-flex; align-items: center; gap: 8px; }
+.pagination-page { font: 600 12px var(--mono); color: var(--ink); }
+.pagination .compound { height: 34px; }
+.pagination .compound .dd { min-width: 0; }
+.pagination .compound .dd-btn { min-width: 72px; }
 
 /* Inline status dropdown (custom menu) */
 .status-select .dd-btn {

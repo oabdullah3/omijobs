@@ -5,6 +5,8 @@ const STATUSES = ["unapplied", "applied", "uninterested"];
 const STATUS_LABELS = { unapplied: "Not applied", applied: "Applied", uninterested: "Not interested" };
 // Extracted fields surfaced inline as chips, in visual priority order.
 const CHIP_FIELDS = ["domain", "industry", "employment_type", "salary", "seniority", "mandatory_languages", "preferred_languages", "job_duration", "work_arrangement", "licenses"];
+// Allowed page sizes — the UI offers exactly these.
+const PAGE_SIZES = [15, 30, 45];
 const state = {
   sources: [],
   key: null,
@@ -22,6 +24,8 @@ const state = {
   timer: null,
   searchTimer: null,
   view: localStorage.getItem("omijobs-view") || "table", // "table" | "cards"
+  page: 1,
+  pageSize: (() => { const n = Number(localStorage.getItem("omijobs-page-size")); return PAGE_SIZES.includes(n) ? n : 30; })(),
 };
 const expandedCards = new Set(); // card-view signatures with the chip list expanded
 const openDescs = new Set();      // card-view signatures with the description expanded (survives refreshes)
@@ -51,7 +55,7 @@ function listFingerprint(list) {
   return fp;
 }
 
-async function refresh({ force = false } = {}) {
+async function refresh({ force = false, resetPage = false } = {}) {
   const seq = ++refreshSeq;
   try {
     await refreshSources();
@@ -65,10 +69,12 @@ async function refresh({ force = false } = {}) {
     loadFacets();
     const keyChanged = state.key !== facetKey;
     if (keyChanged) { expandedCards.clear(); openDescs.clear(); }
+    if (keyChanged || resetPage) state.page = 1;
     loadCollapsed();
     loadFiltersOpen();
     const changed = force || !state.list || listFingerprint(state.list) !== listFingerprint(next);
     state.list = next;
+    clampPage(filteredRows().length);
     const facetsNode = document.getElementById("jobs-facets");
     if (facetsNode && (keyChanged || facetsNode.childElementCount === 0)) {
       facetsNode.replaceChildren(renderFacets() ?? []);
@@ -176,31 +182,31 @@ function setStatusFilter(filter) {
   state.status = filter;
   const sel = document.getElementById("jobs-status-filter");
   if (sel) sel.setValue?.(filter);
-  refresh(); // status is applied server-side by the jobs endpoint
+  refresh({ force: true, resetPage: true }); // status is applied server-side by the jobs endpoint
 }
 
 function renderTable() {
   const list = state.list;
   if (!list) return el("div", { class: "empty" }, "No source selected.");
-  const rows = (list.rows ?? []).filter(matchesFacets);
+  const rows = filteredRows();
   if (list.total === 0) return el("div", { class: "empty" }, "No jobs match the current filter.");
   if (rows.length === 0) return el("div", { class: "empty" }, "No jobs match the current facet filters.");
   const head = el("tr", {},
     ...(["posted_at", "title", "company", "location", "status"].map((key) =>
-      el("th", { onclick: () => { if (state.sort === key) state.dir = state.dir === "desc" ? "asc" : "desc"; else { state.sort = key; state.dir = "desc"; } refresh({ force: true }); } },
+      el("th", { onclick: () => { if (state.sort === key) state.dir = state.dir === "desc" ? "asc" : "desc"; else { state.sort = key; state.dir = "desc"; } refresh({ force: true, resetPage: true }); } },
         `${key}${state.sort === key ? (state.dir === "desc" ? " ↓" : " ↑") : ""}`))),
   );
-  const body = rows.map((row) => el("tr", { class: "row-click", onclick: () => openDetail(row.signature) },
-    el("td", { class: "t-time" }, fmtRel(row.postedAt)),
-    el("td", {},
-      el("span", { class: "t-title" }, esc(row.job.title || row.signature.slice(0, 8)))),
-    el("td", {}, esc(row.job.company ?? "")),
-    el("td", {}, esc(row.job.location ?? "")),
-    el("td", {}, statusSelect(row.signature, row.status))));
-  return el("div", { class: "table-wrap" },
-    el("table", { class: "table" },
-      el("thead", {}, head),
-      el("tbody", {}, ...body)));
+  return el("div", {},
+    el("div", { class: "table-wrap" },
+      el("table", { class: "table" },
+        el("thead", {}, head),
+        el("tbody", {}, ...pageRows(rows).map((row) => el("tr", { class: "row-click", onclick: () => openDetail(row.signature) },
+          el("td", { class: "t-time" }, fmtRel(row.postedAt)),
+          el("td", {}, el("span", { class: "t-title" }, esc(row.job.title || row.signature.slice(0, 8)))),
+          el("td", {}, esc(row.job.company ?? "")),
+          el("td", {}, esc(row.job.location ?? "")),
+          el("td", {}, statusSelect(row.signature, row.status))))))),
+    renderPagination(rows.length));
 }
 
 function statusSelect(sig, status) {
@@ -260,10 +266,12 @@ const CARD_CHIP_LIMIT = 4;
 function renderCards() {
   const list = state.list;
   if (!list) return el("div", { class: "empty" }, "No source selected.");
-  const rows = (list.rows ?? []).filter(matchesFacets);
+  const rows = filteredRows();
   if (list.total === 0) return el("div", { class: "empty" }, "No jobs match the current filter.");
   if (rows.length === 0) return el("div", { class: "empty" }, "No jobs match the current facet filters.");
-  return el("div", { class: "job-cards" }, ...rows.map(jobCard));
+  return el("div", {},
+    el("div", { class: "job-cards" }, ...pageRows(rows).map(jobCard)),
+    renderPagination(rows.length));
 }
 
 function jobCard(row) {
@@ -338,7 +346,7 @@ function renderBody() {
     selectMenu({
       value: state.key,
       options: srcOpts,
-      onSelect: (v) => { state.key = v; state.info = state.sources.find((s) => s.key === state.key); refresh({ force: true }); },
+      onSelect: (v) => { state.key = v; state.info = state.sources.find((s) => s.key === state.key); refresh({ force: true, resetPage: true }); },
     }));
   const deleteBtn = el("button", { id: "delete-db-btn", class: "btn small btn-danger", disabled: !state.info?.exists, onclick: deleteSourceModal }, "Delete DB");
   const statusFilter = el("label", { class: "compound", title: "Filter by status" },
@@ -347,7 +355,7 @@ function renderBody() {
       id: "jobs-status-filter",
       value: state.status,
       options: [{ value: "", label: "any status" }, ...STATUSES.map((s) => ({ value: s, label: s }))],
-      onSelect: (v) => { state.status = v; refresh({ force: true }); },
+      onSelect: (v) => { state.status = v; refresh({ force: true, resetPage: true }); },
     }));
   const search = el("input", {
     class: "input toolbar-search",
@@ -356,7 +364,7 @@ function renderBody() {
     oninput: (e) => {
       state.q = e.target.value.trim();
       clearTimeout(state.searchTimer);
-      state.searchTimer = setTimeout(() => refresh({ force: true }), 300);
+      state.searchTimer = setTimeout(() => refresh({ force: true, resetPage: true }), 300);
     },
   });
   return el("div", { id: "jobs-root" },
@@ -381,13 +389,65 @@ function loadFacets() {
 }
 
 function applyFilter() {
-  const body = document.getElementById("jobs-body");
-  if (body) body.replaceChildren(renderTicker(), renderBodyList());
+  clampPage(filteredRows().length);
+  renderList();
   updateFiltersBar();
 }
 
 function renderBodyList() {
   return state.view === "cards" ? renderCards() : renderTable();
+}
+
+// Rows that pass the current facet filters — pagination applies AFTER facets,
+// so every page is a consistent slice of the filtered set.
+function filteredRows() {
+  return (state.list?.rows ?? []).filter(matchesFacets);
+}
+function totalPages(total) { return Math.max(1, Math.ceil(total / state.pageSize)); }
+function clampPage(total) { const pages = totalPages(total); if (state.page > pages) state.page = pages; }
+function pageRows(rows) {
+  const start = (state.page - 1) * state.pageSize;
+  return rows.slice(start, start + state.pageSize);
+}
+
+function renderPagination(total) {
+  if (total <= state.pageSize) return null; // single page — no bar needed
+  const pages = totalPages(total);
+  const start = (state.page - 1) * state.pageSize + 1;
+  const end = Math.min(total, state.page * state.pageSize);
+  return el("div", { class: "pagination" },
+    el("span", { class: "pagination-info" }, `Showing ${start}–${end} of ${total}`),
+    el("div", { class: "pagination-nav" },
+      el("button", { class: "btn small", disabled: state.page <= 1, onclick: () => gotoPage(state.page - 1) }, "‹ Prev"),
+      el("span", { class: "pagination-page" }, `Page ${state.page} of ${pages}`),
+      el("button", { class: "btn small", disabled: state.page >= pages, onclick: () => gotoPage(state.page + 1) }, "Next ›")),
+    el("label", { class: "compound pagination-size", title: "Jobs per page" },
+      el("span", { class: "compound-label" }, "per page"),
+      selectMenu({
+        value: String(state.pageSize),
+        options: PAGE_SIZES.map((n) => ({ value: String(n), label: String(n) })),
+        onSelect: (v) => setPageSize(Number(v)),
+      })));
+}
+
+function gotoPage(p) {
+  const pages = totalPages(filteredRows().length);
+  state.page = Math.max(1, Math.min(p, pages));
+  renderList();
+  const body = document.getElementById("jobs-body");
+  if (body) body.scrollIntoView({ block: "start" });
+}
+function setPageSize(n) {
+  const first = (state.page - 1) * state.pageSize; // keep the first visible row on screen
+  state.pageSize = n;
+  try { localStorage.setItem("omijobs-page-size", String(n)); } catch {}
+  state.page = Math.floor(first / n) + 1;
+  clampPage(filteredRows().length);
+  renderList();
+}
+function renderList() {
+  const body = document.getElementById("jobs-body");
+  if (body) body.replaceChildren(renderTicker(), renderBodyList());
 }
 
 function viewToggle() {
