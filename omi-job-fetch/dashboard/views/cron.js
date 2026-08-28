@@ -75,16 +75,19 @@ function gatewayHeader() {
   const badge = gw.running ? el("span", { class: "badge live" }, statusText)
     : gw.stale ? el("span", { class: "badge stale" }, statusText)
     : el("span", { class: "badge off" }, statusText);
-  const btns = [
+  const topBtns = [
     el("button", { class: "btn btn-primary", disabled: gw.running, onclick: () => mutate("start") }, "Start"),
     el("button", { class: "btn", disabled: !gw.running, onclick: () => mutate("stop") }, "Stop"),
     el("button", { class: "btn", disabled: !gw.running, onclick: () => mutate("restart") }, "Restart"),
     el("button", { class: "btn", onclick: () => mutate(d.paused ? "resume" : "pause") }, d.paused ? "Resume" : "Pause"),
   ];
   return el("div", { class: "card" },
-    el("p", { class: "eyebrow" }, "Cron gateway"),
-    el("div", { class: "toolbar" }, rec, badge, ...btns),
-    el("p", { class: "hint" }, `Auto-start at login: ${esc(gw.autostart)} · state: ${esc(d.file)}`));
+    el("div", { class: "toolbar" },
+      el("h3", {}, "Gateway"),
+      rec,
+      badge),
+    el("p", { class: "hint" }, `Auto-start at login: ${esc(gw.autostart)} · state: ${esc(d.file)}`),
+    el("div", { class: "toolbar" }, ...topBtns));
 }
 
 // One persistent log node, created once and never reparented: refresh() swaps
@@ -129,20 +132,23 @@ function jobCard(job, gwRunning) {
     el("button", { class: "btn small", onclick: () => mutate(job.enabled ? "disable" : "enable", job.id) }, job.enabled ? "Disable" : "Enable"),
     el("button", { class: "btn small btn-danger", onclick: () => removeJob(job) }, "Remove"),
   ];
-  // The config details stand out in a callout instead of a "config: <path>"
-  // line — paths live in fixed folders now, so only names matter.
+  // Config details as flat hints (Config card style) instead of a callout.
   const cfg = state.configMeta[job.id];
+  const cfgLines = cfg
+    ? [
+        el("p", { class: "hint" }, `queries: ${esc(cfg.queries.join(", ") || "(none)")}`),
+        cfg.db.enabled
+          ? el("p", { class: "hint" }, `db: ${esc(cfg.db.file)} · ${cfg.db.exists ? `${cfg.db.jobCount} jobs` : "not created yet"}`)
+          : el("p", { class: "hint" }, "db: disabled"),
+      ]
+    : [];
   return el("div", { class: "card", "data": { cron: job.id } },
     el("div", { class: "toolbar" },
       el("h3", {}, esc(job.id)),
       badge,
       countdown),
     el("p", { class: "hint" }, `schedule: ${esc(job.schedule)}`),
-    cfg ? el("div", { class: "callout" },
-      el("p", {}, `queries: ${esc(cfg.queries.join(", ") || "(none)")}`),
-      cfg.db.enabled
-        ? el("p", {}, `db: ${esc(cfg.db.file)} · ${cfg.db.exists ? `${cfg.db.jobCount} jobs` : "not created yet"}`)
-        : el("p", {}, "db: disabled")) : null,
+    ...cfgLines,
     el("p", { class: "hint" }, `last run: ${fmtRel(job.lastRun)}` + (progress ? ` · ${esc(progress)}` : ` (${esc(statusText)})`)),
     el("div", { class: "toolbar" }, ...controls));
 }
@@ -220,7 +226,6 @@ function addCronCard() {
     }
   });
   return el("div", { class: "card" },
-    el("p", { class: "eyebrow" }, "Add cron"),
     el("h3", {}, "New scheduled run"),
     form);
 }
@@ -236,9 +241,20 @@ export async function render() {
     if (d.error) jobChildren.push(el("div", { class: "callout warn" }, el("p", {}, esc(d.error))));
     jobChildren.push(...d.jobs.map((j) => jobCard(j, d.gateway.running)));
     root.append(
+      // Page header (matches Jobs/Config pattern)
+      el("p", { class: "eyebrow" }, "Cron"),
+      el("h2", { class: "docs" }, "Scheduled runs"),
+      el("p", { class: "hint" }, "Gateway status, scheduled jobs, and analysis crons."),
+      // Gateway section
       el("div", { id: "cron-gateway" }, gatewayHeader(), gatewayLog()),
+      // Jobs section
+      el("h3", { class: "docs" }, "Jobs"),
       el("div", { id: "cron-jobs" }, ...jobChildren),
+      // Analysis crons section
+      el("h3", { class: "docs" }, "Analysis crons"),
       el("div", { id: "analysis-crons" }, analysisCronSection(d.jobs.filter((j) => j.kind === "analysis"))),
+      // Add job section
+      el("h3", { class: "docs" }, "Add a job"),
       el("div", { id: "cron-add" }, addCronCard()));
   } else {
     root.append(el("div", { class: "empty" }, "Loading…"));
@@ -261,9 +277,10 @@ function analysisCronSection(jobs) {
     try { await api.post("/api/cron/add-analysis", { name: name.value, schedule: schedule.value, db: db.value }); toast("Analysis cron added", "good"); refresh(); } catch (error) { toast(error.message, "warn"); }
   });
   return el("div", {},
-    el("p", { class: "eyebrow" }, "Analysis crons"),
     ...jobs.map((job) => el("div", { class: "card" },
       el("div", { class: "toolbar" }, el("h3", {}, esc(job.id)), el("span", { class: "badge" }, "analysis")),
       el("p", { class: "hint" }, `${esc(job.dbKey ?? "")} · ${esc(job.schedule)} · last: ${esc(job.lastStatus ?? "never")}`))),
-    el("div", { class: "card" }, form));
+    el("div", { class: "card" },
+      el("h3", {}, "Add analysis cron"),
+      form));
 }

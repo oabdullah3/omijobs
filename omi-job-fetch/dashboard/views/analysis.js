@@ -1,7 +1,7 @@
 import { api } from "../api.js";
-import { el, esc, fmtRel, toast, openModal } from "../app.js";
+import { el, esc, fmtRel, toast, openModal, selectMenu } from "../app.js";
 
-const state = { data: null, timer: null, db: "", reanalyze: false, testResults: {} };
+const state = { data: null, timer: null, db: "", reanalyze: false, testResults: {}, dbDropdown: null };
 
 const PROVIDER_DEFAULTS = { temperature: 0.2, maxTokens: 400, timeoutMs: 60000, retries: 3, retryBackoffMs: 2000 };
 const EMPTY = { settings: { providers: [], enabledProvider: null }, dbs: [], runningDb: null };
@@ -43,18 +43,16 @@ function refreshActions() {
 }
 
 function syncDbSelect() {
-  const select = document.getElementById("analysis-db-select");
-  if (!select) return;
+  const dd = state.dbDropdown;
+  if (!dd) return;
   const dbs = data().dbs ?? [];
-  const keys = dbs.map((db) => db.key);
-  const same = select.options.length === keys.length && keys.every((key, i) => select.options[i].value === key);
+  const options = dbs.map((db) => ({ value: db.key, label: db.label }));
+  const keys = options.map((o) => o.value);
+  const same = dd.options.length === options.length && options.every((o, i) => dd.options[i].value === o.value && dd.options[i].label === o.label);
   if (same) return;
-  select.replaceChildren(...keys.map((key) => {
-    const db = dbs.find((d) => d.key === key);
-    return el("option", { value: key }, db?.label ?? key);
-  }));
+  dd.setOptions(options);
   if (!keys.includes(state.db)) state.db = keys[0] ?? "";
-  select.value = state.db;
+  dd.setValue(state.db);
 }
 
 export function onLive(event) {
@@ -198,16 +196,22 @@ function providerCard(provider, enabledProviderId) {
       el("h3", {}, esc(provider.name)),
       enabled ? el("span", { class: "badge live" }, "enabled") : null,
       el("span", { class: `badge ${provider.apiKeyStatus === "set" ? "live" : "off"}` }, `key ${provider.apiKeyStatus}`)),
-    el("p", { class: "hint" }, `${esc(provider.model)} · ${esc(provider.baseUrl)}`),
-    el("p", { class: "hint" }, `env ${esc(provider.apiKeyEnv)} · temp ${provider.temperature} · max ${provider.maxTokens} · timeout ${provider.timeoutMs}ms · retries ${provider.retries}`),
+    el("dl", { class: "provider-meta" },
+      el("dt", {}, "Model"), el("dd", {}, esc(provider.model)),
+      el("dt", {}, "Base URL"), el("dd", {}, esc(provider.baseUrl)),
+      el("dt", {}, "Env var"), el("dd", {}, esc(provider.apiKeyEnv)),
+      el("dt", {}, "Temperature"), el("dd", {}, String(provider.temperature)),
+      el("dt", {}, "Max tokens"), el("dd", {}, String(provider.maxTokens)),
+      el("dt", {}, "Timeout"), el("dd", {}, `${provider.timeoutMs}ms`),
+      el("dt", {}, "Retries"), el("dd", {}, String(provider.retries))),
     el("div", { class: "toolbar" }, ...controls),
     testResultLine(provider.id));
 }
 
 function providersCard(s) {
-  return el("div", { class: "card" },
+  return el("div", {},
     el("div", { class: "toolbar" },
-      el("p", { class: "eyebrow" }, "Providers"),
+      el("h3", { class: "docs" }, "Providers"),
       el("button", { class: "btn small btn-primary", onclick: () => providerFormModal(null) }, "Add provider")),
     s.providers.length
       ? el("div", {}, ...s.providers.map((provider) => providerCard(provider, s.enabledProvider)))
@@ -236,8 +240,7 @@ function settingsCard(s) {
     }
   });
   return el("div", { class: "card" },
-    el("p", { class: "eyebrow" }, "Extraction settings"),
-    el("h3", {}, "Prompt"),
+    el("div", { class: "toolbar" }, el("h3", {}, "Extraction settings")),
     form);
 }
 
@@ -248,7 +251,7 @@ function renderDbCards() {
       el("h3", {}, esc(db.label)),
       db.running ? el("span", { class: "badge live" }, "analyzing") : null),
     el("p", { class: "hint" }, db.running ? (db.summary ?? "working") : (db.status ? `${db.status} · ${fmtRel(db.lastRun)}` : "never analyzed")),
-    el("p", {}, `${db.analyzed} analyzed · ${db.pending} pending`)));
+    el("p", { class: "hint" }, `${db.analyzed} analyzed · ${db.pending} pending`)));
 }
 
 function renderActions() {
@@ -262,7 +265,7 @@ function renderActions() {
       el("button", { class: "btn btn-danger", onclick: stop }, "Stop")) : null,
     el("div", { class: "toolbar" },
       el("button", { class: "btn btn-primary", disabled: !enabled || !dbOptions.length || running, onclick: run }, "Run extraction"),
-      el("label", { class: "inline" },
+      el("label", { class: "inline-check" },
         el("input", { type: "checkbox", checked: state.reanalyze, onchange: (e) => { state.reanalyze = e.target.checked; } }),
         " Re-analyze all rows (overwrites existing extraction)")),
   ];
@@ -271,17 +274,30 @@ function renderActions() {
 export async function render() {
   if (!state.data) await refresh();
   const s = data();
-  const dbOptions = s.dbs.map((db) => el("option", { value: db.key }, db.label));
-  const dbSelect = el("select", { id: "analysis-db-select", class: "select", value: state.db, onchange: (event) => { state.db = event.target.value; } }, dbOptions);
+  const dbOptions = s.dbs.map((db) => ({ value: db.key, label: db.label }));
+  const dbDropdown = selectMenu({
+    id: "analysis-db-select",
+    value: state.db,
+    options: dbOptions,
+    onSelect: (v) => { state.db = v; },
+    class: "compound",
+    title: "Select database",
+  });
+  state.dbDropdown = dbDropdown;
   return el("div", { id: "analysis-root" },
     el("p", { class: "eyebrow" }, "Analysis"),
     el("h2", { class: "docs" }, "AI job extraction"),
+    el("p", { class: "hint" }, "Run extraction, manage providers, and configure prompts."),
     el("div", { class: "card" },
-      el("p", { class: "eyebrow" }, "Run extraction"),
-      dbSelect,
+      el("div", { class: "toolbar" },
+        el("h3", {}, "Run extraction"),
+        dbDropdown),
       el("div", { id: "analysis-actions" }, ...renderActions())),
+    el("h3", { class: "docs" }, "Databases"),
     el("div", { id: "analysis-cards" }, ...renderDbCards()),
+    el("h3", { class: "docs" }, "Providers"),
     el("div", { id: "analysis-providers" }, providersCard(s.settings)),
+    el("h3", { class: "docs" }, "Settings"),
     settingsCard(s.settings));
 }
 

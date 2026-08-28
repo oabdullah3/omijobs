@@ -387,3 +387,17 @@ a { color: var(--accent); }
 .config-file-name { display: flex; align-items: center; gap: 8px; }
 .config-file-name b { font: 600 14px var(--sans); }
 .config-file-row .hint { margin: 0; word-break: break-all; }
+
+/* Section header with inline action (Analysis providers, etc.) */
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 10px; }
+.section-head h3.docs { margin: 0; font: 600 17px var(--serif); color: var(--ink); }
+.section-head .toolbar { margin: 0; }
+
+/* Inline checkbox label (re-analyze) */
+.inline-check { display: inline-flex; align-items: center; gap: 6px; font: 13px var(--sans); color: var(--muted); cursor: pointer; }
+.inline-check input { accent-color: var(--accent); }
+
+/* Provider meta grid */
+.provider-meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font: 13px var(--sans); color: var(--muted); margin: 8px 0; }
+.provider-meta dt { font: 600 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--faint); }
+.provider-meta dd { margin: 0; word-break: break-all; }

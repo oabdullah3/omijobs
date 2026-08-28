@@ -159,6 +159,11 @@ export function selectMenu({ value, options = [], onSelect, title, id, class: cl
   container.open = open;
   container.close = close;
   container.btn = btn;
+  container.setOptions = (newOptions) => {
+    options = newOptions;
+    if (!menu.hidden) buildOptions();
+    setValue(current);
+  };
   return container;
 }
 
