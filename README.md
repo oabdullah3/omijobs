@@ -1,171 +1,150 @@
-# AI Job Hunter & Daily Digest 🕵️‍♂️💼
+# omijobs
 
-An autonomous, AI-powered job scraping agent. It reads your resume, dynamically generates targeted web searches, scrapes live job listings using a headless browser, evaluates each role against your profile using an LLM of your choice, and emails you a ranked daily digest of top matches.
+Deterministic, programmatic job retrieval from job boards and aggregator portals.
+Replaces the `run_job_digest.py` scraping layer. No browser automation, no AI in the
+retrieval loop — every run is driven by a plain config file and produces reproducible
+output you can diff between runs.
 
-## Features
-- **Dynamic Search Generation:** AI analyzes your resume and search instructions to generate targeted search queries automatically.
-- **Provider-Agnostic LLM Integration:** Works seamlessly with OpenRouter, DeepSeek, OpenAI, Groq, or any OpenAI-compatible API endpoint.
-- **Headless Scraping:** Uses Playwright to render JavaScript and bypass complex job board architectures.
-- **Smart Filtering:** Evaluates raw job page content against your CV and outputs structured JSON ratings.
-- **Deduplication:** SQLite database prevents duplicate job notifications across runs.
-- **Error Resilient:** Catches page-level timeouts gracefully and dispatches alert emails upon critical system failures.
-- **100% Free Automation:** Built to run automatically using GitHub Actions and free/low-cost API tiers.
+Everything you'll type is `omijobs run` (a sweep now) or `omijobs cron ...` (scheduled
+sweeps). This guide gets you from zero to your first job list in under a minute; the full
+config reference is [config.guide.md](config.guide.md).
 
----
+## Requirements
 
-## 🛠️ Local Setup Instructions
+- **Node ≥ 24** (uses the built-in `node:sqlite`)
+- `npm install` + `npm run build` in the project folder
 
-### 1. Clone & Set Up Virtual Environment
-Open your terminal and execute:
-```bash
-# Clone the repository
-git clone [https://github.com/yourusername/ai-job-hunter.git](https://github.com/yourusername/ai-job-hunter.git)
-cd ai-job-hunter
+## Your first run — under a minute
 
-# Create a virtual environment
-python -m venv venv
-
-# Activate the virtual environment
-# On Windows:
-venv\Scripts\activate
-# On Mac/Linux:
-source venv/bin/activate
-
-```
-
-### 2. Install Dependencies
-
-Install the required packages and Playwright's headless browser binaries:
+**1. Set your search terms.** The base config is seeded on first run: the shipped
+`config.base.json` is copied into `~/.omijobs/dashboard.configs/realtime/config.json`
+(an existing file is never overwritten). Edit that file's `global.queries`:
 
 ```bash
-# Install Python requirements
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-
-# Install Chromium browser binary
-python -m playwright install chromium
-
+node dist/cli.js run    # first run seeds the config
+# then edit ~/.omijobs/dashboard.configs/realtime/config.json → "global": { "queries": ["finance intern"] }
 ```
 
-### 3. Configure Environment Variables
+The query list is the whole search: each query runs against every enabled portal, and
+results deduplicate across all queries × portals.
 
-Create a file named `.env` in the root directory. Configure your email settings and select your preferred LLM provider below:
-
-```text
-# ==========================================
-# LLM PROVIDER CONFIGURATION (Select One)
-# ==========================================
-
-# --- Option A: OpenRouter (Default Free Options) ---
-LLM_BASE_URL="[https://openrouter.ai/api/v1](https://openrouter.ai/api/v1)"
-LLM_API_KEY="sk-or-v1-your-openrouter-key"
-LLM_MODEL="google/gemini-1.5-flash:free"
-
-# --- Option B: DeepSeek ---
-# LLM_BASE_URL="[https://api.deepseek.com](https://api.deepseek.com)"
-# LLM_API_KEY="sk-your-deepseek-key"
-# LLM_MODEL="deepseek-chat"
-
-# --- Option C: OpenAI Direct ---
-# LLM_BASE_URL="[https://api.openai.com/v1](https://api.openai.com/v1)"
-# LLM_API_KEY="sk-proj-your-openai-key"
-# LLM_MODEL="gpt-4o-mini"
-
-# --- Option D: Any Custom OpenAI-Compatible Provider ---
-# LLM_BASE_URL="https://your-custom-endpoint/v1"
-# LLM_API_KEY="your-api-key"
-# LLM_MODEL="your-model-name"
-
-# ==========================================
-# EMAIL & SCRAPER CONFIGURATION
-# ==========================================
-GMAIL_SENDER="your_email@gmail.com"
-GMAIL_APP_PASSWORD="your_16_char_app_password"
-TARGET_EMAIL="person1@gmail.com, person2@gmail.com"  # comma-separated list — one or many
-
-# Where the dedup history (SQLite) lives. Each value = a separate history,
-# e.g. seen_jobs_fin.db for finance searches, seen_jobs_tech.db for tech.
-DB_PATH="seen_jobs.db"
-MAX_RESULTS_PER_QUERY=10
-MAX_SCRAPE_LENGTH=6000
-PLAYWRIGHT_TIMEOUT_MS=20000
-LLM_TEMPERATURE=0.0
-
-```
-
-### 4. Provide Resume & Instructions
-
-The script employs a hybrid context loader. For local development:
-
-1. Create a directory named `context/` in the root folder.
-2. Create `context/resume.md` (or `.txt`) containing your full resume.
-3. Create `context/instructions.txt` specifying your search parameters (e.g., target roles, acceptable locations, experience caps).
-
-*(Note: The `context/` directory and `.env` file are pre-configured in `.gitignore` to protect sensitive personal data).*
-
-### 5. Execute Locally
-
-Run the script manually:
+**2. Run it:**
 
 ```bash
-python run_job_digest.py
-
+node dist/cli.js run
 ```
 
----
+(Install the CLI with `npm link` and the same command is just `omijobs run`.)
 
-## ☁️ GitHub Actions Deployment
+**3. Read the results.** Each run writes two files:
 
-Run this workflow automatically on a daily schedule in the cloud.
+- `output/runs/<timestamp>/jobs.json` — the deduped, normalized job list
+- `output/runs/<timestamp>/run.json` — the record of the run: queries, per-portal status
+  and counts, what got dropped or deduplicated, timings
 
-### 1. Repository Privacy & Context Handling
+## What the run does
 
-* **If your repository is PRIVATE:** You can commit `context/resume.md` and `context/instructions.txt` directly. Simply remove `context/` from your `.gitignore` file before committing.
-* **If your repository is PUBLIC:** Keep `context/` in `.gitignore`. Instead, pass your context via GitHub Secrets (`RESUME_TEXT` and `INSTRUCTIONS_TEXT`).
+Every enabled portal is swept for every query, results are normalized to one contract
+(title, company, location, apply URL, source, …), cross-portal duplicates collapse on a
+content signature (`dedup.fields`), and listings missing a required field are dropped and
+reported in the manual-review trail. No credentials are needed to read these sites.
 
-### 2. Configure GitHub Secrets & Variables
+## One-off vs scheduled
 
-In your GitHub Repository, go to **Settings ➡️ Secrets and variables ➡️ Actions**.
+**One-off** — `omijobs run [--config <path>]` runs a sweep right now and exits. Bare
+`omijobs` does the same. Good for trying a config or a manual check.
 
-#### Secrets (`Repository secrets`)
+**Scheduled** — `omijobs cron` runs the same sweeps on a timer, from the same CLI:
 
-Add the following required credentials:
+```bash
+omijobs cron add --config dashboard.configs/realtime/config.json --schedule "every 6 hours"
+omijobs cron start        # background gateway + auto-start at login — survives reboots
+omijobs cron status       # gateway state, autostart state, last log lines, jobs
+omijobs cron list         # jobs + last run status
+omijobs cron stop         # stop the gateway and remove auto-start
+```
 
-* `LLM_API_KEY`: Your API key (from OpenRouter, DeepSeek, OpenAI, etc.).
-* `GMAIL_SENDER`: The dispatching Gmail address.
-* `GMAIL_APP_PASSWORD`: Your 16-character Google App Password.
-* `TARGET_EMAIL`: The destination address(es) for the daily digest. Comma-separate multiple recipients, e.g. `person1@gmail.com, person2@gmail.com`.
-* `RESUME_TEXT`: *(Optional if using public repo)* Plain text version of your resume.
-* `INSTRUCTIONS_TEXT`: *(Optional if using public repo)* Search parameters and constraints.
-* `TARGET_EMAIL_TECH`: *(Optional)* Recipients for the **Tech** digest. Same comma-separated format as `TARGET_EMAIL`.
-* `RESUME_TEXT_TECH`: *(Optional)* Resume used by the **Tech** workflow.
-* `INSTRUCTIONS_TEXT_TECH`: *(Optional)* Search parameters for the **Tech** workflow.
-* `TARGET_EMAIL_FIN`: *(Optional)* Recipients for the **Finance** digest. Same comma-separated format as `TARGET_EMAIL`.
-* `RESUME_TEXT_FIN`: *(Optional)* Resume used by the **Finance** workflow.
-* `INSTRUCTIONS_TEXT_FIN`: *(Optional)* Search parameters for the **Finance** workflow.
+Schedules are human-friendly: `every 30m`, `every 6 hours`, `daily at 09:00`,
+`weekdays at 18:30`, `monday at 09:00`. Jobs live in `~/.omijobs/cron.json`;
+`omijobs cron enable/disable <id>` and `pause/resume` turn jobs on/off individually or
+globally. A cron-spawned run marks itself in its `run.json` (`"trigger": "cron"`), so
+scheduled results are distinguishable from manual ones.
 
-#### Environment Variables (`Repository variables`)
+## Optional: an aggregate database
 
-Go to the **Variables** tab under **Actions** and configure your provider parameters:
+Set `"db": { "enabled": true }` in config.json and every run also upserts its deduped jobs
+into one SQLite file (`jobs.db`) keyed by the same dedup signature — so the DB grows
+across runs instead of resetting each time. Rows past `retentionDays` are expired
+automatically. Turned off by default.
 
-* `LLM_BASE_URL`: e.g., `https://openrouter.ai/api/v1` or `https://api.deepseek.com`
-* `LLM_MODEL`: e.g., `google/gemini-1.5-flash:free` or `deepseek-chat`
-* `DB_PATH`: *(Optional)* The SQLite file to cache (e.g., `seen_jobs.db`). Each value gets its own cache lineage, so you can keep separate "seen" histories per search domain. If unset, the workflow defaults to `seen_jobs.db`.
-* `DB_PATH_TECH`: *(Optional)* Same as `DB_PATH`, but for the **Tech** workflow. Defaults to `seen_jobs_tech.db`.
-* `DB_PATH_FIN`: *(Optional)* Same as `DB_PATH`, but for the **Finance** workflow. Defaults to `seen_jobs_fin.db`.
+## AI analysis
 
-### 3. Execution
+The dashboard Analysis tab and the CLI score aggregate DB rows through any
+OpenAI-compatible provider. Settings are seeded from `analysis.config.base.json`
+into `~/.omijobs/analysis.json`; API keys are write-only and resolve from the
+process environment before the package `.env` file.
 
-Three workflows live in `.github/workflows/`, one per search scope — each with its own DB, cache, recipients, resume, and instructions:
+```bash
+omijobs analyze base
+omijobs analyze status
+omijobs analyze providers list
+omijobs cron add-analysis --name "AI triage" --schedule "daily at 10:00" --db base
+```
 
-* **Daily Dynamic Job Digest - General** (`daily_digest.yml`) — uses the base `DB_PATH`, `TARGET_EMAIL`, `RESUME_TEXT`, `INSTRUCTIONS_TEXT`.
-* **Daily Dynamic Job Digest - Tech** (`tech_digest.yml`) — uses `DB_PATH_TECH`, `TARGET_EMAIL_TECH`, `RESUME_TEXT_TECH`, `INSTRUCTIONS_TEXT_TECH`.
-* **Daily Dynamic Job Digest - Finance** (`fin_digest.yml`) — uses `DB_PATH_FIN`, `TARGET_EMAIL_FIN`, `RESUME_TEXT_FIN`, `INSTRUCTIONS_TEXT_FIN`.
+The model extracts a structured profile from each job description against the
+contract in `analysis.config.base.json` (skills, languages, seniority, salary,
+etc.), stored per-row and surfaced as filters in the dashboard Analysis tab.
+Existing rows are skipped unless re-analyzed with `omijobs analyze --reanalyze`.
+Retention is owned by the base config and shared by normal runs and analysis.
 
-Each workflow will:
+## Config at a glance
 
-* Execute automatically via CRON on a daily schedule, staggered 2 hours apart: General at `00:00 UTC`, Tech at `02:00 UTC`, Finance at `04:00 UTC`.
-* Support manual execution via the **Actions** tab by selecting the workflow ➡️ **Run workflow**.
-* **Tech & Finance fail fast if unconfigured**: if any scope-specific variable (`TARGET_EMAIL_*`, `RESUME_TEXT_*`, `INSTRUCTIONS_TEXT_*`) is missing, the workflow exits with an error before scraping — emailed to `GMAIL_SENDER` via the crash-email path — so it never runs half-configured and never touches another scope's DB.
-* Retain state across runs using `actions/cache` on its `DB_PATH` file to prevent duplicate postings. The cache key is derived from `DB_PATH` plus a per-run id, so each run restores the latest history and writes the updated one back.
-* To verify the cache loaded: in the run logs, the "Cache SQLite Database" step shows `Cache restored from key: ...` on a hit (or `Cache not found` on a miss), and the scraper logs `📦 Opening database: ...` with the number of URLs already processed.
+Everything about a run lives in `config.json` — there are no per-run query flags:
+
+- `global.queries` — the search terms (required)
+- `portals.enabled` / `ats.enabled` — which adapters run (ATS backends are a future
+  named-employer mode; v1 ships portals only)
+- `portals.config.<id>` — per-portal search params and pacing
+- `outputs.required` / `dedup.fields` / `outputDir` — drop policy, dedup signature, output
+  location
+- `db` — the optional aggregate store above
+
+### Geography gotchas
+
+Portals are geographically scoped — `location` *narrows* within a portal's scope, it never
+changes the scope:
+
+- **ctgoodjobs** — Hong Kong only; `location` is ignored
+- **gradconnection** / **jobsdb** — HK by default (gradconnection's `country`, jobsdb's
+  `siteKey`)
+- **efinancialcareers** — country-scoped by `countryCode2` (sent as the search `location` when unset)
+- **linkedin** — the only global portal; set `location` to scope it
+
+### Environment variables
+
+No secrets in config.json. Adapters read env vars for anything sensitive:
+
+| Var | Portal | Effect |
+|---|---|---|
+| `JD_UA` / `LI_UA` / `EF_UA` | jobsdb+ctgoodjobs / linkedin / efinancialcareers | Custom browser User-Agent (defaults to a bundled Chrome UA) |
+
+### Exit codes
+
+`0` = at least one portal found jobs; `1` = nothing found (or a run failed). A run that
+returns nothing on purpose (e.g. an empty `portals.enabled`) exits `1` — treat it as
+"nothing new".
+
+## Commands
+
+```
+omijobs run [--config <path>]   Run a job sweep now (default when no command given)
+omijobs cron <command>          Manage scheduled runs and the gateway
+
+  cron add --config <path> --schedule "<str>" [--name <id>]
+  cron list | enable <id> | disable <id> | remove <id>
+  cron pause | resume
+  cron start | stop | restart | status
+  cron run                      Run every enabled job now, ignoring schedules
+
+Any command accepts --help.
+```
