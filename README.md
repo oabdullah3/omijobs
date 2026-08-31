@@ -30,7 +30,7 @@ This starts the dashboard at **http://127.0.0.1:5211** and opens it in your brow
 (use `omijobs dashboard --port 5212` if the port is taken). The first launch seeds a
 default config into `~/.omijobs/` — an existing config is never overwritten.
 
-![Jobs tab — the dashboard home](screenshots/dashboard-jobs.png)
+![Jobs tab — the dashboard home, table view](screenshots/jobs_table.png)
 
 The dashboard has six tabs:
 
@@ -43,6 +43,16 @@ The dashboard has six tabs:
 | **Docs** | In-app reference |
 | **Logs** | Live run output and history |
 
+### Browse and triage results
+
+The **Jobs** tab is where everything lands. Results show as a compact table by
+default; switch to **Cards** for a fuller read, and use the **Filters** drawer to
+narrow by status, portal, posted date, or any extracted field.
+
+![Jobs tab — cards view](screenshots/jobs_cards.png)
+
+![Jobs tab — facet filters](screenshots/jobs_filters.png)
+
 ### Your first sweep — under a minute
 
 1. **Start the dashboard** — `omijobs dashboard`
@@ -54,7 +64,7 @@ The dashboard has six tabs:
 4. **Triage** — open any job for its apply link; use the status dropdown to mark it
    *applied* or *not interested*.
 
-![Config tab — edit your searches](screenshots/dashboard-config.png)
+![Config tab — realtime and cron configs](screenshots/config_realtime_and_cron.png)
 
 Every run is also written to `output/runs/<timestamp>/` (path controlled by
 `outputDir` in your config): `jobs.json` is the deduped, normalized job list and
@@ -67,7 +77,16 @@ Open the **Cron** tab, pick a config, give it a schedule — done. Schedules are
 human-friendly: `every 30m`, `every 6 hours`, `daily at 09:00`, `weekdays at 18:30`,
 `monday at 09:00`. The gateway auto-starts at login and survives reboots.
 
-![Cron tab — schedule sweeps](screenshots/dashboard-cron.png)
+![Cron tab — gateway status and run log](screenshots/cron_gateway_and_logs.png)
+
+Each job card shows its schedule, queries, database, and last run; analysis jobs
+appear in their own section.
+
+![Cron tab — job cards and analysis crons](screenshots/cron_jobs_and_analysis.png)
+
+Add a new job (or an analysis cron) straight from the tab.
+
+![Cron tab — add a job](screenshots/cron_add.png)
 
 A scheduled run is identical to a manual one except its `run.json` carries
 `"trigger": "cron"`, so scheduled results are easy to separate.
@@ -81,7 +100,23 @@ environment. The model extracts a structured profile from each job description �
 languages, seniority, salary, and more — stored per row and surfaced as filters in the
 Jobs tab.
 
-![Analysis tab — optional AI scoring](screenshots/dashboard-analysis.png)
+![Analysis tab — run extraction and databases](screenshots/analysis_extraction_and_databases.png)
+
+Providers and extraction settings live below — add any OpenAI-compatible provider,
+then tune the prompt and request size.
+
+![Analysis tab — providers and settings](screenshots/analysis_providers_and_settings.png)
+
+## The other tabs
+
+**Docs** is an in-app copy of this guide; **Logs** tails run output live and keeps
+history; **Settings** shows where config and state live on disk.
+
+![Docs tab — in-app reference](screenshots/docs.png)
+
+![Logs tab — live run output](screenshots/logs.png)
+
+![Settings tab — config and state paths](screenshots/settings.png)
 
 ## The CLI
 
