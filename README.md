@@ -1,101 +1,110 @@
 # omijobs
 
 Deterministic, programmatic job retrieval from job boards and aggregator portals.
-Replaces the `run_job_digest.py` scraping layer. No browser automation, no AI in the
-retrieval loop — every run is driven by a plain config file and produces reproducible
-output you can diff between runs.
+Local-first: no browser automation, no AI in the retrieval loop. Every sweep is driven
+by a plain config file and produces reproducible output you can diff between runs.
 
-Everything you'll type is `omijobs run` (a sweep now) or `omijobs cron ...` (scheduled
-sweeps). This guide gets you from zero to your first job list in under a minute; the full
-config reference is [config.guide.md](config.guide.md).
+**Start with the dashboard.** Everything you'll do in a normal day — run sweeps, triage
+results, tweak searches, schedule, and (optionally) let AI score them — happens in one
+local web app. The full config reference is [config.guide.md](config.guide.md).
 
 ## Requirements
 
 - **Node ≥ 24** (uses the built-in `node:sqlite`)
-- `npm install` + `npm run build` in the project folder
 
-## Your first run — under a minute
-
-**1. Set your search terms.** The base config is seeded on first run: the shipped
-`config.base.json` is copied into `~/.omijobs/dashboard.configs/realtime/config.json`
-(an existing file is never overwritten). Edit that file's `global.queries`:
+## Install
 
 ```bash
-node dist/cli.js run    # first run seeds the config
-# then edit ~/.omijobs/dashboard.configs/realtime/config.json → "global": { "queries": ["finance intern"] }
+npm install -g omijobs
 ```
 
-The query list is the whole search: each query runs against every enabled portal, and
-results deduplicate across all queries × portals.
+That's it. `omijobs` is on your PATH, and your settings live in `~/.omijobs/`.
 
-**2. Run it:**
+## Start here: the dashboard
 
 ```bash
-node dist/cli.js run
+omijobs dashboard
 ```
 
-(Install the CLI with `npm link` and the same command is just `omijobs run`.)
+This starts the dashboard at **http://127.0.0.1:5211** and opens it in your browser
+(use `omijobs dashboard --port 5212` if the port is taken). The first launch seeds a
+default config into `~/.omijobs/` — an existing config is never overwritten.
 
-**3. Read the results.** Each run writes two files:
+![Jobs tab — the dashboard home](screenshots/dashboard-jobs.png)
 
-- `output/runs/<timestamp>/jobs.json` — the deduped, normalized job list
-- `output/runs/<timestamp>/run.json` — the record of the run: queries, per-portal status
-  and counts, what got dropped or deduplicated, timings
+The dashboard has six tabs:
 
-## What the run does
+| Tab | What it's for |
+|---|---|
+| **Jobs** | See everything found so far; filter with facets; mark jobs applied / not interested |
+| **Analysis** | (Optional) AI scoring of job descriptions via any OpenAI-compatible provider |
+| **Cron** | Schedule sweeps with human-friendly schedules |
+| **Config** | Edit your searches and per-portal settings |
+| **Docs** | In-app reference |
+| **Logs** | Live run output and history |
 
-Every enabled portal is swept for every query, results are normalized to one contract
-(title, company, location, apply URL, source, …), cross-portal duplicates collapse on a
-content signature (`dedup.fields`), and listings missing a required field are dropped and
-reported in the manual-review trail. No credentials are needed to read these sites.
+### Your first sweep — under a minute
 
-## One-off vs scheduled
+1. **Start the dashboard** — `omijobs dashboard`
+2. **Set your search terms** — open the **Config** tab, put your terms in
+   `global.queries`, and save. Each query runs against every enabled portal, and results
+   deduplicate across all queries × portals.
+3. **Run it** — back on the **Jobs** tab, hit **Run**. Results stream in as each portal
+   is swept; if nothing comes back, try broader terms.
+4. **Triage** — open any job for its apply link; use the status dropdown to mark it
+   *applied* or *not interested*.
 
-**One-off** — `omijobs run [--config <path>]` runs a sweep right now and exits. Bare
-`omijobs` does the same. Good for trying a config or a manual check.
+![Config tab — edit your searches](screenshots/dashboard-config.png)
 
-**Scheduled** — `omijobs cron` runs the same sweeps on a timer, from the same CLI:
+Every run is also written to `output/runs/<timestamp>/` (path controlled by
+`outputDir` in your config): `jobs.json` is the deduped, normalized job list and
+`run.json` is the record of the run — queries, per-portal status and counts, what got
+dropped or deduplicated, timings.
+
+## Scheduling sweeps
+
+Open the **Cron** tab, pick a config, give it a schedule — done. Schedules are
+human-friendly: `every 30m`, `every 6 hours`, `daily at 09:00`, `weekdays at 18:30`,
+`monday at 09:00`. The gateway auto-starts at login and survives reboots.
+
+![Cron tab — schedule sweeps](screenshots/dashboard-cron.png)
+
+A scheduled run is identical to a manual one except its `run.json` carries
+`"trigger": "cron"`, so scheduled results are easy to separate.
+
+## Optional: AI analysis
+
+The **Analysis** tab scores rows in your database through any OpenAI-compatible
+provider. Settings are seeded from `analysis.config.base.json` into
+`~/.omijobs/analysis.json`; API keys are write-only and resolve from the process
+environment. The model extracts a structured profile from each job description — skills,
+languages, seniority, salary, and more — stored per row and surfaced as filters in the
+Jobs tab.
+
+![Analysis tab — optional AI scoring](screenshots/dashboard-analysis.png)
+
+## The CLI
+
+The dashboard drives the same engine the CLI does. Use the CLI when you want sweeps in
+a script, a terminal, or a cron job of your own:
 
 ```bash
-omijobs cron add --config dashboard.configs/realtime/config.json --schedule "every 6 hours"
-omijobs cron start        # background gateway + auto-start at login — survives reboots
-omijobs cron status       # gateway state, autostart state, last log lines, jobs
-omijobs cron list         # jobs + last run status
-omijobs cron stop         # stop the gateway and remove auto-start
+omijobs run                  # sweep every enabled portal now (default command)
+omijobs cron add --config <path> --schedule "<str>"
+omijobs cron start           # background gateway + auto-start at login
+omijobs analyze base         # AI-score the database (needs a configured provider)
+omijobs db list              # inspect the aggregate database
+omijobs logs                 # tail logs
 ```
 
-Schedules are human-friendly: `every 30m`, `every 6 hours`, `daily at 09:00`,
-`weekdays at 18:30`, `monday at 09:00`. Jobs live in `~/.omijobs/cron.json`;
-`omijobs cron enable/disable <id>` and `pause/resume` turn jobs on/off individually or
-globally. A cron-spawned run marks itself in its `run.json` (`"trigger": "cron"`), so
-scheduled results are distinguishable from manual ones.
+Bare `omijobs` runs a sweep. `--config <path>` points at any config; the default is
+`~/.omijobs/dashboard.configs/realtime/config.json`.
 
-## Optional: an aggregate database
+### Exit codes
 
-Set `"db": { "enabled": true }` in config.json and every run also upserts its deduped jobs
-into one SQLite file (`jobs.db`) keyed by the same dedup signature — so the DB grows
-across runs instead of resetting each time. Rows past `retentionDays` are expired
-automatically. Turned off by default.
-
-## AI analysis
-
-The dashboard Analysis tab and the CLI score aggregate DB rows through any
-OpenAI-compatible provider. Settings are seeded from `analysis.config.base.json`
-into `~/.omijobs/analysis.json`; API keys are write-only and resolve from the
-process environment before the package `.env` file.
-
-```bash
-omijobs analyze base
-omijobs analyze status
-omijobs analyze providers list
-omijobs cron add-analysis --name "AI triage" --schedule "daily at 10:00" --db base
-```
-
-The model extracts a structured profile from each job description against the
-contract in `analysis.config.base.json` (skills, languages, seniority, salary,
-etc.), stored per-row and surfaced as filters in the dashboard Analysis tab.
-Existing rows are skipped unless re-analyzed with `omijobs analyze --reanalyze`.
-Retention is owned by the base config and shared by normal runs and analysis.
+`0` = at least one portal found jobs; `1` = nothing found (or a run failed). A run that
+returns nothing on purpose (e.g. an empty `portals.enabled`) exits `1` — treat it as
+"nothing new".
 
 ## Config at a glance
 
@@ -105,9 +114,10 @@ Everything about a run lives in `config.json` — there are no per-run query fla
 - `portals.enabled` / `ats.enabled` — which adapters run (ATS backends are a future
   named-employer mode; v1 ships portals only)
 - `portals.config.<id>` — per-portal search params and pacing
-- `outputs.required` / `dedup.fields` / `outputDir` — drop policy, dedup signature, output
-  location
-- `db` — the optional aggregate store above
+- `outputs.required` / `dedup.fields` / `outputDir` — drop policy, dedup signature,
+  output location
+- `db` — the aggregate store (on by default, 30-day retention; disable it in Config if
+  you don't want it)
 
 ### Geography gotchas
 
@@ -127,12 +137,6 @@ No secrets in config.json. Adapters read env vars for anything sensitive:
 | Var | Portal | Effect |
 |---|---|---|
 | `JD_UA` / `LI_UA` / `EF_UA` | jobsdb+ctgoodjobs / linkedin / efinancialcareers | Custom browser User-Agent (defaults to a bundled Chrome UA) |
-
-### Exit codes
-
-`0` = at least one portal found jobs; `1` = nothing found (or a run failed). A run that
-returns nothing on purpose (e.g. an empty `portals.enabled`) exits `1` — treat it as
-"nothing new".
 
 ## Commands
 

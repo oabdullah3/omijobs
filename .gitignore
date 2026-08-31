@@ -10,4 +10,5 @@ node_modules/
 dist/
 output/
 .analysis-state*/
+tests/.analysis-state/
 analysis/

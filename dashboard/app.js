@@ -164,6 +164,10 @@ export function selectMenu({ value, options = [], onSelect, title, id, class: cl
     if (!menu.hidden) buildOptions();
     setValue(current);
   };
+  // Live view of the current options — a getter (not a plain property) because
+  // setOptions reassigns the closure variable. analysis.js syncDbSelect() reads
+  // dd.options to decide whether the dropdown needs rebuilding.
+  Object.defineProperty(container, "options", { get: () => options });
   return container;
 }
 

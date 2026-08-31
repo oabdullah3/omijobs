@@ -16,11 +16,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 const pkgDir = path.resolve(".");
-const stateDir = path.join(pkgDir, ".analysis-state-test");
+// All analysis state lives under one gitignored parent inside tests/ so test
+// runs never litter the repo root.
+const stateRoot = path.join(pkgDir, "tests", ".analysis-state");
+const stateDir = path.join(stateRoot, ".analysis-state-test");
 
 beforeEach(() => {
   // Clean up state dir before each test
-  const statePath = path.join(pkgDir, ".analysis-state-test");
+  const statePath = path.join(stateRoot, ".analysis-state-test");
   if (fs.existsSync(statePath)) {
     fs.rmSync(statePath, { recursive: true, force: true });
   }
@@ -28,7 +31,7 @@ beforeEach(() => {
 
 afterEach(() => {
   // Clean up after each test
-  const statePath = path.join(pkgDir, ".analysis-state-test");
+  const statePath = path.join(stateRoot, ".analysis-state-test");
   if (fs.existsSync(statePath)) {
     fs.rmSync(statePath, { recursive: true, force: true });
   }
@@ -60,7 +63,7 @@ describe("AnalysisConfig - loadAnalysisSettings", () => {
 
   it("creates default settings when no example or state exists", () => {
     // Use a non-existent state dir to force default creation
-    const defaultDir = path.join(pkgDir, ".analysis-state-nonexistent");
+    const defaultDir = path.join(stateRoot, ".analysis-state-nonexistent");
     const defaultSettings = loadAnalysisSettings(pkgDir, defaultDir);
     expect(defaultSettings.systemPrompt).toBeDefined();
     expect(defaultSettings.providers).toBeInstanceOf(Array);
@@ -68,7 +71,7 @@ describe("AnalysisConfig - loadAnalysisSettings", () => {
   });
 
   it("migrates legacy v0 settings (no schemaVersion/fields) preserving providers", () => {
-    const legacyDir = path.join(pkgDir, ".analysis-state-legacy");
+    const legacyDir = path.join(stateRoot, ".analysis-state-legacy");
     fs.mkdirSync(legacyDir, { recursive: true });
     fs.writeFileSync(
       path.join(legacyDir, "analysis.json"),
@@ -108,7 +111,7 @@ describe("AnalysisConfig - loadAnalysisSettings", () => {
   });
 
   it("replaces the legacy score-based system prompt during migration", () => {
-    const legacyDir = path.join(pkgDir, ".analysis-state-legacy-prompt");
+    const legacyDir = path.join(stateRoot, ".analysis-state-legacy-prompt");
     fs.mkdirSync(legacyDir, { recursive: true });
     fs.writeFileSync(
       path.join(legacyDir, "analysis.json"),
@@ -142,7 +145,7 @@ describe("AnalysisConfig - loadAnalysisSettings", () => {
   });
 
   it("repairs a v1 file that still carries the legacy score-based prompt", () => {
-    const dir = path.join(pkgDir, ".analysis-state-stale-prompt");
+    const dir = path.join(stateRoot, ".analysis-state-stale-prompt");
     fs.mkdirSync(dir, { recursive: true });
     const base = JSON.parse(fs.readFileSync(path.join(pkgDir, "analysis.config.base.json"), "utf8"));
     fs.writeFileSync(
@@ -179,7 +182,7 @@ describe("AnalysisConfig - saveAnalysisSettings", () => {
   });
 
   it("creates state directory if it doesn't exist", () => {
-    const tempDir = path.join(pkgDir, ".analysis-state-new-dir");
+    const tempDir = path.join(stateRoot, ".analysis-state-new-dir");
     const settings = {
       systemPrompt: "Test prompt",
       schemaVersion: 1,

@@ -22,7 +22,8 @@
     "config.base.json",
     "analysis.config.base.json",
     "README.md",
-    "config.guide.md"
+    "config.guide.md",
+    "screenshots/**"
   ],
   "keywords": [
     "jobs",
