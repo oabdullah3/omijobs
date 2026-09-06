@@ -10,7 +10,11 @@ local web app. The full config reference is [config.guide.md](config.guide.md).
 
 ## Requirements
 
-- **Node ≥ 24** (uses the built-in `node:sqlite`)
+- **Node ≥ 24** (uses the built-in `node:sqlite`). `npm` ships with Node.
+
+If you don't have Node yet, grab it from **https://nodejs.org/** (the LTS or Current
+line both work — just needs to be ≥ 24), or use a version manager: **https://github.com/nvm-sh/nvm**
+(macOS/Linux) or **https://github.com/coreybutler/nvm-windows** (Windows).
 
 ## Install
 
