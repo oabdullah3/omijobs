@@ -107,6 +107,18 @@ then tune the prompt and request size.
 
 ![Analysis tab — providers and settings](screenshots/analysis_providers_and_settings.png)
 
+### Where to get an API key
+
+The Analysis tab works with any OpenAI-compatible provider. Two easy free options:
+
+- **https://build.nvidia.com/models** — free endpoint models; sign up, grab an API
+  key, and it works with this tool.
+- **https://openrouter.ai/** — free models too; sign up and copy your API key.
+
+You can use any other AI provider as long as it's OpenAI-compatible — just set the
+base URL, key, and model in the Analysis providers settings. Run **Analyze** to verify
+the config works before relying on it.
+
 ## The other tabs
 
 **Docs** is an in-app copy of this guide; **Logs** tails run output live and keeps
