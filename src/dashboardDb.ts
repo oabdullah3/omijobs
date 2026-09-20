@@ -6,7 +6,7 @@ import type { ConfigMeta } from "./dashboardConfig.js";
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
 
-export const JOB_STATUSES = ["unapplied", "applied", "uninterested"] as const;
+export const JOB_STATUSES = ["unapplied", "applied", "saved", "uninterested"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
 export interface DbInfo {

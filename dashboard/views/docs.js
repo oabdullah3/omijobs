@@ -27,7 +27,7 @@ function quickstart() {
       p([code("Data is yours"), " — everything lives in SQLite files under your state directory (see Settings)."]),
       p([code("The dashboard drives the real CLI"), " — Run now, Save, and Stop all execute the same commands you would type."]),
     ]),
-    callout("tip", p([code("Statuses are for you"), " — marking a job Applied or Not interested never sends anything anywhere; it is your own pipeline bookkeeping."])),
+    callout("tip", p([code("Statuses are for you"), " — marking a job Applied, Saved, or Not interested never sends anything anywhere; it is your own pipeline bookkeeping."])),
   ];
 }
 
@@ -38,7 +38,7 @@ function jobsSection() {
     h3("Sources"),
     p(["The dropdown at the top-left picks which database to browse — one per config (a cron with ", code("separate"), " storage gets its own). The label shows the exact file path, and the Delete DB button permanently deletes that database."]),
     h3("The ticker"),
-    p(["The four stat cards — total / not applied / applied / not interested — are clickable: tap one to filter the list to that status."]),
+    p(["The five stat cards — total / not applied / applied / saved / not interested — are clickable: tap one to filter the list to that status."]),
     h3("Two views"),
     ul([
       p([code("Table"), " — compact rows: posted time, title, company, location, and a status dropdown on every row. Click a row for the full picture."]),
@@ -46,7 +46,7 @@ function jobsSection() {
       p(["Switch with the Table / Cards toggle at the top right. Your choice is remembered."]),
     ]),
     h3("Statuses"),
-    p(["Every job has a status: ", code("Not applied"), " (default), ", code("Applied"), ", or ", code("Not interested"), ". Set it from the dropdown on a row/card, or inside the detail popup. The dropdown never sends an application — it only updates your tracker."]),
+    p(["Every job has a status: ", code("Not applied"), " (default), ", code("Applied"), ", ", code("Saved"), ", or ", code("Not interested"), ". Set it from the dropdown on a row/card, or inside the detail popup. The dropdown never sends an application — it only updates your tracker."]),
     h3("The detail popup"),
     p(["Click a row (or a card title) to open the full posting: the original description, extracted fields, the apply URL, and the status actions. Esc or clicking outside closes it."]),
     h3("Search & sort"),

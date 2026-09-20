@@ -106,7 +106,7 @@ function printHelp(): void {
 Commands:
   run [--config <path>]   Run a job sweep now (the default when no command is given)
   cron ...                Manage the cron gateway and scheduled jobs
-  db ...                  List and delete aggregate DBs
+  db ...                  List, mark, and delete aggregate DBs
   logs ...                Query the structured event log
   dashboard [--port N]    Open the web dashboard (default port 5211)
 

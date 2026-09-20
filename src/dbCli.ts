@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { discoverConfigs } from "./dashboardConfig.js";
-import { deleteDbFile, discoverDbs } from "./dashboardDb.js";
+import { deleteDbFile, discoverDbs, setJobStatus } from "./dashboardDb.js";
 import { readActiveMarker, resolveAnalysisState } from "./analysisCli.js";
 import { ensureUserFiles } from "./userPaths.js";
 
@@ -24,6 +24,7 @@ function printDbHelp(): void {
   console.log(`Usage: omijobs db <command>
 
   list                List aggregate DBs (name, file, row count)
+  mark <name> <signature> <status>   Set a job's status (unapplied | applied | saved | uninterested)
   delete <name>       Permanently delete a DB — type its name to confirm
 
 Names are the config ids shown on the Jobs page (e.g. "base", or a cron slug).`);
@@ -41,6 +42,37 @@ async function cmdList(): Promise<number> {
     console.log(`  ${d.key.padEnd(20)} ${d.path}${d.exists ? `  ${d.total} jobs` : "  (not created)"}`);
   }
   return 0;
+}
+
+async function cmdMark(argv: string[]): Promise<number> {
+  const [key, signature, status] = argv;
+  if (!key || !signature || !status) {
+    console.error("Error: db mark requires a name, signature, and status (see: omijobs db --help)");
+    return 1;
+  }
+  const user = ensureUserFiles(PACKAGE_DIR, STATE_DIR);
+  const metas = discoverConfigs({ packageDir: user.stateDir, cronFile: user.cronFile });
+  const meta = metas.find((m) => m.id === key);
+  if (!meta) {
+    console.error(`Error: no DB named "${key}" (see: omijobs db list)`);
+    return 1;
+  }
+  if (!meta.db.exists) {
+    console.error(`Error: DB "${key}" has not been created yet (${meta.db.path}).`);
+    return 1;
+  }
+  try {
+    const r = setJobStatus(meta.db.path, signature, status);
+    if (!r.ok) {
+      console.error(`Error: ${r.error ?? "unknown"}`);
+      return 1;
+    }
+    console.log(`Marked ${signature} as ${status}.`);
+    return 0;
+  } catch (error) {
+    console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
 }
 
 async function cmdDelete(argv: string[]): Promise<number> {
@@ -94,6 +126,8 @@ export async function runDbCommand(argv: string[]): Promise<number> {
       return cmdList();
     case "delete":
       return cmdDelete(rest);
+    case "mark":
+      return cmdMark(rest);
     default:
       console.error(`Unknown db command: ${cmd}`);
       printDbHelp();

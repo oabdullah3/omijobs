@@ -40,7 +40,7 @@ The dashboard has six tabs:
 
 | Tab | What it's for |
 |---|---|
-| **Jobs** | See everything found so far; filter with facets; mark jobs applied / not interested |
+| **Jobs** | See everything found so far; filter with facets; mark jobs applied / saved / not interested |
 | **Analysis** | (Optional) AI scoring of job descriptions via any OpenAI-compatible provider |
 | **Cron** | Schedule sweeps with human-friendly schedules |
 | **Config** | Edit your searches and per-portal settings |

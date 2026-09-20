@@ -1,8 +1,8 @@
 import { api, ApiError } from "../api.js";
 import { el, esc, toast, openModal, fmtTime, fmtRel, selectMenu } from "../app.js";
 
-const STATUSES = ["unapplied", "applied", "uninterested"];
-const STATUS_LABELS = { unapplied: "Not applied", applied: "Applied", uninterested: "Not interested" };
+const STATUSES = ["unapplied", "applied", "saved", "uninterested"];
+const STATUS_LABELS = { unapplied: "Not applied", applied: "Applied", saved: "Saved", uninterested: "Not interested" };
 // Extracted fields surfaced inline as chips, in visual priority order.
 const CHIP_FIELDS = ["domain", "industry", "employment_type", "salary", "seniority", "mandatory_languages", "preferred_languages", "job_duration", "work_arrangement", "licenses"];
 // Allowed page sizes — the UI offers exactly these.
@@ -135,6 +135,7 @@ async function openDetail(sig) {
   if (job.apply_url) actions.push(el("a", { class: "btn btn-primary", href: job.apply_url, target: "_blank", rel: "noopener" }, "Open application ↗"));
   actions.push(
     el("button", { class: "btn", onclick: () => setStatusAndClose(sig, "applied") }, "Mark applied"),
+    el("button", { class: "btn btn-ghost", onclick: () => setStatusAndClose(sig, "saved") }, "Save"),
     el("button", { class: "btn btn-ghost", onclick: () => setStatusAndClose(sig, "uninterested") }, "Not interested"),
     el("button", { class: "btn btn-ghost", onclick: () => close(modal) }, "Close"));
   const modal = el("div", { class: "modal" },
@@ -171,6 +172,7 @@ function renderTicker() {
     ["total", info?.total ?? 0, "", "All jobs"],
     ["unapplied", by.unapplied ?? 0, "unapplied", "Jobs you haven't acted on yet"],
     ["applied", by.applied ?? 0, "applied", "Jobs you marked applied"],
+    ["saved", by.saved ?? 0, "saved", "Jobs you've saved/bookmarked"],
     ["uninterested", by.uninterested ?? 0, "uninterested", "Jobs you marked not interested"],
   ];
   return el("div", { class: "ticker" }, ...cards.map(([label, n, filter, title]) =>

@@ -1,7 +1,7 @@
 :root {
   color-scheme: light;
   --bg: #F4F5F7; --ink: #1B2230; --muted: #5B6574; --faint: #929CAB;
-  --line: #E2E6EC; --accent: #C01E33; --accent-ink: #FFFFFF; --good: #1F7A4C; --warn: #A05A00;
+  --line: #E2E6EC; --accent: #C01E33; --accent-ink: #FFFFFF; --good: #1F7A4C; --warn: #A05A00; --info: #2563A6;
   --surface: #FFFFFF; --shadow: 0 1px 3px rgba(27,34,48,.08);
   --serif: Georgia, "Times New Roman", serif;
   --sans: -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -10,7 +10,7 @@
 [data-theme="dark"] {
   color-scheme: dark;
   --bg: #14171D; --ink: #E9ECF1; --muted: #A6AFBD; --faint: #6B7484;
-  --line: #2A313D; --accent: #FF5A66; --accent-ink: #0B0B0D; --good: #34C77B; --warn: #E0A020;
+  --line: #2A313D; --accent: #FF5A66; --accent-ink: #0B0B0D; --good: #34C77B; --warn: #E0A020; --info: #6FA8DC;
   --surface: #1A1F28; --shadow: 0 1px 3px rgba(0,0,0,.4);
 }
 * { box-sizing: border-box; }
@@ -67,7 +67,7 @@ a { color: var(--accent); }
 .card h3 { font-size: 17px; }
 
 /* Ticker stats */
-.ticker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+.ticker { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
 .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; transition: border-color .12s, transform .12s, box-shadow .12s; }
 .stat b { display: block; font: 700 30px var(--serif); font-variant-numeric: tabular-nums; }
 .stat span { font: 12px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
@@ -75,6 +75,7 @@ a { color: var(--accent); }
 .stat.clickable:hover { border-color: var(--faint); transform: translateY(-1px); box-shadow: var(--shadow); }
 .stat.unapplied b { color: var(--accent); }
 .stat.applied b { color: var(--good); }
+.stat.saved b { color: var(--info); }
 .stat.uninterested b { color: var(--faint); }
 
 /* Table */
@@ -92,6 +93,7 @@ a { color: var(--accent); }
 /* Chips */
 .chip { display: inline-block; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
 .chip.applied { color: var(--good); border-color: currentColor; }
+.chip.saved { color: var(--info); border-color: currentColor; }
 .chip.uninterested { color: var(--faint); }
 .chip.unapplied { color: var(--accent); border-color: currentColor; }
 

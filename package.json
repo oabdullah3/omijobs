@@ -1,6 +1,6 @@
 {
   "name": "omijobs",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "description": "Deterministic programmatic job retrieval from aggregator portals and ATS backends",
   "type": "module",
   "bin": {

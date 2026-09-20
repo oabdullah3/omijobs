@@ -161,6 +161,19 @@ describe("setJobStatus", () => {
     }
   });
 
+  it("sets the saved status", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "omijobs-db-"));
+    try {
+      const file = join(dir, "jobs.db");
+      seed(file);
+      const r = setJobStatus(file, "a", "saved");
+      expect(r.ok).toBe(true);
+      expect(getJob(file, "a")?.status).toBe("saved");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("reports not-found for an unknown signature", async () => {
     const dir = await mkdtemp(join(tmpdir(), "omijobs-db-"));
     try {
