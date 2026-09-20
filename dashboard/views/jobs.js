@@ -276,6 +276,22 @@ function renderCards() {
     renderPagination(rows.length));
 }
 
+// One-tap save/unsave toggle — flips the job between the default "unapplied"
+// status and "saved" without touching the full status dropdown.
+function saveToggle(row) {
+  const saved = row.status === "saved";
+  return el("button", {
+    class: `icon-btn save-toggle${saved ? " saved" : ""}`,
+    title: saved ? "Unsave job" : "Save job",
+    "aria-label": saved ? "Unsave job" : "Save job",
+    "aria-pressed": String(saved),
+    onclick: (e) => {
+      e.stopPropagation();
+      setStatus(row.signature, saved ? "unapplied" : "saved");
+    },
+  }, saved ? "★" : "☆");
+}
+
 function jobCard(row) {
   const job = row.job ?? {};
   const all = cardChips(row);
@@ -296,7 +312,9 @@ function jobCard(row) {
   return el("div", { class: "job-card" },
     el("div", { class: "job-card-head" },
       el("h3", { class: "job-card-title", title: "Open details", onclick: () => openDetail(row.signature) }, esc(job.title || row.signature.slice(0, 8))),
-      statusSelect(row.signature, row.status)),
+      el("div", { class: "job-card-head-actions" },
+        saveToggle(row),
+        statusSelect(row.signature, row.status))),
     el("div", { class: "job-card-meta" },
       el("span", { class: "job-card-company" }, esc(job.company ?? "—")),
       job.location ? el("span", {}, `· ${esc(job.location)}`) : null,
